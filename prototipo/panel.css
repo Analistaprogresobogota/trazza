@@ -1,0 +1,48 @@
+/* Panel de plantas (rol Progreso) */
+body { background: var(--bg); min-height: 100vh; }
+.panel-barra { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 28px; background: var(--menu-bg); color: #fff; position: sticky; top: 0; z-index: 5; }
+.panel-marca { display: flex; align-items: center; gap: 10px; }
+.panel-marca img { height: 36px; }
+.panel-marca strong { display: block; font-size: 22px; font-style: italic; font-weight: 900; line-height: 1; }
+.panel-marca strong::after { content: "."; color: var(--im-amarillo); }
+.panel-marca small, .panel-usuario small { opacity: .75; font-size: 12px; display: block; }
+.panel-usuario { display: flex; align-items: center; gap: 12px; text-align: right; }
+.panel-usuario strong { font-size: 14px; }
+.panel-main { max-width: 1180px; margin: 0 auto; padding: 24px 28px 48px; }
+.panel-main > .tabs .tab { font-size: 14.5px; padding: 10px 18px; }
+
+.plantas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
+.planta-card { display: flex; flex-direction: column; gap: 12px; }
+.planta-card.inactiva { opacity: .72; }
+.planta-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.planta-cab h2 { margin: 0; font-size: 18px; color: var(--heading); }
+.planta-cab small { color: var(--ink-2); font-size: 12px; }
+.planta-mods { display: flex; flex-wrap: wrap; gap: 6px; }
+.mod-chip { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 20px; background: var(--accent-soft); color: var(--accent-ink); }
+.mod-chip.fijo { background: var(--gray-soft); color: var(--gray-ink); }
+.planta-usuarios { font-size: 13px; color: var(--ink-2); }
+.planta-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
+
+.mod-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+.mod-op { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1.5px solid var(--line-2); border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 700; color: var(--ink); background: var(--surface); }
+.mod-op input { width: 18px; height: 18px; accent-color: var(--im-azul); }
+.mod-op.fijo { cursor: default; opacity: .7; }
+.mod-op:has(input:checked):not(.fijo) { border-color: var(--accent); background: var(--accent-soft); }
+
+.usr-fila { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1.2fr auto; gap: 10px; align-items: end; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+.usr-fila + .usr-fila { margin-top: 10px; }
+.clave-caja { display: flex; gap: 6px; }
+.clave-caja input { flex: 1; min-width: 0; }
+.clave-caja .btn { height: 44px; padding: 0 10px; }
+.paso-titulo { margin: 22px 0 10px; font-size: 15px; color: var(--heading); }
+.paso-titulo:first-child { margin-top: 0; }
+.creados td, .creados th { font-size: 14px; }
+.creados code { font-size: 14px; font-weight: 800; background: var(--warn-soft); color: var(--warn-ink); padding: 2px 6px; border-radius: 6px; }
+
+@media (max-width: 760px) {
+  .panel-barra { padding: 12px 16px; }
+  .panel-main { padding: 18px 16px 40px; }
+  .usr-fila { grid-template-columns: 1fr; }
+  .plantas-grid { grid-template-columns: 1fr; }
+}
+.input-tabla { width: 100%; min-width: 140px; height: 36px; padding: 6px 10px; border: 1.5px solid var(--line-2); border-radius: 8px; font: inherit; font-size: 13.5px; background: var(--input-bg); color: var(--ink); }

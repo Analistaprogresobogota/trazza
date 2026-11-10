@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trazza · Ingreso</title>
+<link rel="stylesheet" href="marca.css">
+<style>
+  body { margin: 0; }
+  .login-fondo { display: grid; grid-template-columns: minmax(320px, 440px) 1fr; align-items: center; gap: 40px; padding: 40px 6vw; box-sizing: border-box; }
+  .tarjeta { padding: 36px 32px; display: grid; gap: 18px; }
+  .tarjeta > * { position: relative; }
+  .logo-im { height: 34px; }
+  .marca-app { margin: 8px 0 0; font-size: 44px; font-weight: 900; font-style: italic; letter-spacing: -.5px; line-height: 1; }
+  .marca-app span { color: var(--im-amarillo); }
+  .lema { margin: 4px 0 6px; opacity: .85; font-size: 15px; }
+  label { display: grid; gap: 6px; font-size: 14px; font-weight: 700; }
+  .fila { display: flex; justify-content: space-between; font-size: 13px; opacity: .9; }
+  .fila a { color: var(--im-amarillo); text-decoration: none; font-weight: 700; }
+  .chips { display: grid; gap: 14px; justify-self: end; align-self: end; margin-bottom: 30px; }
+  .chip { padding: 14px 18px; display: flex; align-items: center; gap: 12px; min-width: 230px; }
+  .chip b { font-size: 22px; color: var(--im-amarillo); position: relative; }
+  .chip small { position: relative; opacity: .9; line-height: 1.2; }
+  .pie { font-size: 12px; opacity: .7; text-align: center; }
+  @media (max-width: 800px) {
+    .login-fondo { grid-template-columns: 1fr; padding: 24px 16px; }
+    .chips { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="login-fondo">
+  <form class="vidrio tarjeta" onsubmit="return false">
+    <img class="logo-im" src="logo-im-ingenieria-blanco.svg" alt="IM Ingeniería">
+    <div>
+      <h1 class="marca-app">Trazza<span>.</span></h1>
+      <p class="lema">Trazabilidad de inventarios en bodega</p>
+    </div>
+    <label>Usuario<input class="vidrio-input" placeholder="correo@imingenieria.com"></label>
+    <label>Contraseña<input class="vidrio-input" type="password" placeholder="••••••••"></label>
+    <div class="fila"><span>Bodega Principal</span><a href="#">¿Olvidaste tu contraseña?</a></div>
+    <button class="btn-amarillo">Ingresar</button>
+    <p class="pie">© 2026 IM Ingeniería en manualidades & logística</p>
+  </form>
+
+  <div class="chips">
+    <div class="vidrio chip"><b>24/7</b><small>Movimientos<br>en tiempo real</small></div>
+    <div class="vidrio chip"><b>100%</b><small>Trazabilidad de<br>entradas y salidas</small></div>
+  </div>
+</div>
+</body>
+</html>

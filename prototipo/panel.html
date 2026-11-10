@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Plantas · Trazza</title>
+<link rel="icon" href="isotipo-im.svg">
+<link rel="stylesheet" href="marca.css?v=2">
+<link rel="stylesheet" href="app.css?v=12">
+<link rel="stylesheet" href="panel.css?v=1">
+<script>
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem("trazza_tema"); } catch (e) {}
+    if (t !== "dark" && t !== "light") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", t);
+  })();
+</script>
+</head>
+<body>
+<header class="panel-barra">
+  <div class="panel-marca"><img src="isotipo-im-blanco.svg" alt=""><div><strong>Trazza</strong><small>Panel de plantas</small></div></div>
+  <div class="panel-usuario"><div><strong id="u-nombre"></strong><small>Progreso</small></div><a class="btn-salir" href="api/api.php?a=respaldo" title="Descarga una copia completa de la base de datos (.sql)" style="text-decoration:none">⬇ Respaldo BD</a><button class="btn-salir" id="btn-salir">Salir</button></div>
+</header>
+<main class="panel-main">
+  <div class="tabs" id="tabs">
+    <button class="tab activo" data-tab="plantas">🏭 Ver plantas</button>
+    <button class="tab" data-tab="crear">＋ Crear planta</button>
+  </div>
+  <div id="vista"><p class="vacio">Cargando…</p></div>
+</main>
+
+<div class="modal-fondo" id="modal" hidden>
+  <div class="modal ancho" role="dialog" aria-modal="true">
+    <header><h2 id="modal-titulo"></h2><button class="btn-x" data-cerrar aria-label="Cerrar">×</button></header>
+    <div id="modal-cuerpo"></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script src="panel.js?v=1"></script>
+</body>
+</html>

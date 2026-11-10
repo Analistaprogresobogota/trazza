@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guía de Marca IM</title>
+<link rel="stylesheet" href="marca.css">
+<style>
+  body { margin: 0; padding: 32px 16px; }
+  main { max-width: 960px; margin: 0 auto; display: grid; gap: 24px; }
+  h1 { margin: 0; font-size: 28px; }
+  h2 { margin: 0 0 16px; font-size: 18px; color: var(--im-azul); }
+  .card { background: var(--superficie); border-radius: var(--radio); box-shadow: var(--sombra); padding: 24px; }
+  .logos { display: grid; grid-template-columns: 3fr 1fr; gap: 16px; align-items: center; }
+  .logos img { width: 100%; max-height: 180px; object-fit: contain; }
+  .oscuro { background: var(--im-azul-oscuro); border-radius: var(--radio); padding: 16px; }
+  .colores { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .color div { height: 70px; border-radius: 10px; border: 1px solid var(--borde); }
+  .color p { margin: 6px 0 0; font-size: 13px; } .color small { color: var(--texto-suave); }
+  .tipos p { margin: 6px 0; }
+  .nombres { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .nombre { border: 1px solid var(--borde); border-radius: 10px; padding: 14px; }
+  .nombre.top { border: 2px solid var(--im-amarillo); background: var(--im-amarillo-claro); }
+  .nombre h3 { margin: 0 0 4px; font-style: italic; font-weight: 900; font-size: 22px; color: var(--im-azul); }
+  .nombre h3 b { color: var(--im-amarillo); }
+  .nombre p { margin: 0; font-size: 14px; color: var(--texto-suave); }
+  @media (max-width: 600px) { .logos { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1 class="titulo-marca"><b>IM</b> Ingeniería · Guía de marca</h1>
+
+  <section class="card">
+    <h2>Logos (vectorizados en SVG)</h2>
+    <div class="logos">
+      <img src="logo-im-ingenieria.svg" alt="Logo IM Ingeniería">
+      <img src="isotipo-im.svg" alt="Isotipo IM">
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Paleta de colores</h2>
+    <div class="colores">
+      <div class="color"><div style="background:var(--im-azul)"></div><p><b>Azul IM</b><br><small>#3A62AA · principal</small></p></div>
+      <div class="color"><div style="background:var(--im-azul-oscuro)"></div><p><b>Azul oscuro</b><br><small>#284A86 · menú / hover</small></p></div>
+      <div class="color"><div style="background:var(--im-azul-claro)"></div><p><b>Azul claro</b><br><small>#E8EEF8 · fondos</small></p></div>
+      <div class="color"><div style="background:var(--im-amarillo)"></div><p><b>Amarillo IM</b><br><small>#E9B11B · acentos</small></p></div>
+      <div class="color"><div style="background:var(--im-amarillo-claro)"></div><p><b>Amarillo claro</b><br><small>#FDF5DD · avisos</small></p></div>
+      <div class="color"><div style="background:var(--ok)"></div><p><b>Stock OK</b><br><small>#2E9E5B</small></p></div>
+      <div class="color"><div style="background:var(--peligro)"></div><p><b>Agotado</b><br><small>#D64545</small></p></div>
+    </div>
+  </section>
+
+  <section class="card tipos">
+    <h2>Tipografía · Nunito</h2>
+    <p class="titulo-marca" style="font-size:34px"><b>IM</b> Ingeniería</p>
+    <p style="font-weight:800;font-size:22px">Títulos — Nunito ExtraBold</p>
+    <p style="font-size:16px">Texto normal — Nunito Regular: Bodega Norte · 1.250 unidades · Última entrada 15/10/2026</p>
+  </section>
+
+  <section class="card">
+    <h2>Ideas de nombre para el aplicativo</h2>
+    <div class="nombres">
+      <div class="nombre top"><h3>Bodeg<b>IM</b></h3><p>★ Recomendado. "Bodega" + IM: se entiende al instante y lleva la marca dentro.</p></div>
+      <div class="nombre"><h3>Stock<b>IM</b></h3><p>Corto y directo; fácil de decir en la operación diaria.</p></div>
+      <div class="nombre"><h3>Inventar<b>IM</b></h3><p>Juego de palabras: "inventario" termina naturalmente en IM.</p></div>
+      <div class="nombre"><h3><b>IM</b> Kardex</h3><p>Usa el término contable que ya conocen en bodega.</p></div>
+      <div class="nombre"><h3>Señal<b>IM</b></h3><p>Conecta con la mano que señala del logo: "señalar dónde está cada cosa".</p></div>
+      <div class="nombre"><h3>Punto <b>IM</b></h3><p>El punto amarillo del logo como "ubicación exacta" del producto.</p></div>
+      <div class="nombre"><h3>Control<b>IM</b></h3><p>Enfatiza control de entradas, salidas y existencias.</p></div>
+      <div class="nombre"><h3><b>IM</b> Almacén</h3><p>El más formal/corporativo, sin juegos de palabras.</p></div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

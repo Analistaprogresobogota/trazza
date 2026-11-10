@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Trazza</title>
+<link rel="icon" href="isotipo-im.svg">
+<link rel="stylesheet" href="marca.css?v=2">
+<link rel="stylesheet" href="app.css?v=12">
+<script>if (!(JSON.parse(sessionStorage.getItem("trazza_sesion") || "null") || {}).planta) location.replace("index.html");</script>
+<script>
+  /* Tema claro / oscuro: preferencia guardada en este navegador, o la del sistema */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem("trazza_tema"); } catch (e) {}
+    if (t !== "dark" && t !== "light") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", t);
+  })();
+</script>
+<script src="app.config.js?v=6"></script>
+</head>
+<body>
+<div class="layout">
+  <aside class="menu" id="menu">
+    <div class="menu-marca">
+      <img src="isotipo-im-blanco.svg" alt="">
+      <div><strong id="nombre-app">Trazza</strong><small>IM Ingeniería</small></div>
+    </div>
+    <nav id="nav"></nav>
+    <div class="menu-usuario">
+      <div><strong id="u-nombre"></strong><small id="u-rol"></small></div>
+      <button class="btn-salir" id="btn-salir" title="Cerrar sesión">Salir</button>
+    </div>
+  </aside>
+
+  <div class="contenido">
+    <header class="barra">
+      <button class="btn-menu" id="btn-menu" aria-label="Abrir menú">☰</button>
+      <h1 id="titulo-vista">Inicio</h1>
+      <div class="barra-acciones" id="barra-acciones"></div>
+      <button class="btn-tema" id="btn-tema" type="button" aria-label="Cambiar tema">
+        <span class="tema-ico" id="tema-ico"></span><span class="tema-txt" id="tema-txt"></span>
+      </button>
+    </header>
+    <main id="vista"></main>
+  </div>
+</div>
+
+<div class="modal-fondo" id="modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true">
+    <header><h2 id="modal-titulo"></h2><button class="btn-x" data-cerrar aria-label="Cerrar">×</button></header>
+    <div id="modal-cuerpo"></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="dashboard.js?v=14"></script>
+<script src="app.js?v=22"></script>
+</body>
+</html>

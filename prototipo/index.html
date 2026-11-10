@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Ingreso · IM Ingeniería</title>
+<link rel="icon" href="isotipo-im.svg">
+<link rel="stylesheet" href="marca.css?v=2">
+<script src="app.config.js?v=6"></script>
+<style>
+  body { margin: 0; }
+  /* Foto de fondo propia de Trazza (bodega con estanterías); el resto del kit IM no cambia */
+  .login-fondo { --login-foto: url("fondo-login-trazza.webp"); background-position: center, center center, center; }
+  .login-fondo { display: grid; grid-template-columns: minmax(320px, 440px) 1fr; align-items: center; gap: 40px; padding: 40px 6vw; box-sizing: border-box; }
+  .tarjeta { padding: 36px 32px; display: grid; gap: 18px; }
+  .tarjeta > * { position: relative; }
+  .logo-im { height: 34px; }
+  .marca-app { margin: 8px 0 0; font-size: 44px; font-weight: 900; font-style: italic; letter-spacing: -.5px; line-height: 1; }
+  .marca-app span { color: var(--im-amarillo); }
+  .lema { margin: 4px 0 6px; opacity: .85; font-size: 15px; }
+  label { display: grid; gap: 6px; font-size: 14px; font-weight: 700; }
+  .fila { display: flex; justify-content: flex-end; font-size: 13px; }
+  .fila a { color: var(--im-amarillo); text-decoration: none; font-weight: 700; }
+  .chips { display: grid; gap: 14px; justify-self: end; align-self: end; margin-bottom: 30px; }
+  .chip { padding: 14px 18px; display: flex; align-items: center; gap: 12px; min-width: 230px; }
+  .chip b { font-size: 22px; color: var(--im-amarillo); position: relative; }
+  .chip small { position: relative; opacity: .9; line-height: 1.2; }
+  .select-planta { appearance: none; cursor: pointer; background-image: linear-gradient(45deg, transparent 50%, #fff 50%), linear-gradient(135deg, #fff 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%; background-size: 6px 6px; background-repeat: no-repeat; padding-right: 36px; }
+  .select-planta option { color: #1d2b45; background: #fff; }
+  .vidrio-input[readonly] { opacity: .7; }
+  [hidden] { display: none !important; }
+  .link-volver { background: none; border: 0; color: #fff; opacity: .8; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; justify-self: center; padding: 0; }
+  .link-volver:hover { opacity: 1; text-decoration: underline; }
+  .error-login { margin: -6px 0 0; min-height: 18px; font-size: 13px; font-weight: 700; color: #FFD6D6; }
+  .login-fondo { position: relative; }
+  .login-credito { position: absolute; right: 16px; bottom: 10px; margin: 0; font-size: 9px; font-weight: 700; letter-spacing: 1.1px; color: rgba(255,255,255,.6); text-transform: uppercase; }
+  .pie { font-size: 12px; opacity: .7; text-align: center; }
+  @media (max-width: 800px) {
+    .login-fondo { grid-template-columns: 1fr; padding: 24px 16px; }
+    .chips { display: none; }
+    .login-credito { position: static; text-align: center; }
+  }
+</style>
+</head>
+<body>
+<div class="login-fondo">
+  <form class="vidrio tarjeta" id="form-login" novalidate>
+    <img class="logo-im" src="logo-im-ingenieria-blanco.svg" alt="IM Ingeniería">
+    <div>
+      <h1 class="marca-app"><span id="app-nombre"></span><span>.</span></h1>
+      <p class="lema" id="app-lema"></p>
+    </div>
+    <label>Usuario<input class="vidrio-input" id="usuario" placeholder="Usuario" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
+    <label>Contraseña<input class="vidrio-input" id="clave" type="password" placeholder="••••••••" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
+    <div class="fila" id="fila-olvido"><a href="#">¿Olvidaste tu contraseña?</a></div>
+    <label id="campo-planta" hidden>Cliente / planta<select class="vidrio-input select-planta" id="planta"></select></label>
+    <p class="error-login" id="error-login" role="alert"></p>
+    <button class="btn-amarillo" id="btn-login">Verificar datos</button>
+    <button type="button" class="link-volver" id="btn-volver" hidden>← Cambiar de usuario</button>
+    <p class="pie">© <span id="anio"></span> IM Ingeniería en manualidades &amp; logística</p>
+  </form>
+  <div class="chips" id="chips"></div>
+  <p class="login-credito">Creado por: SAMUEL TORRES</p>
+</div>
+<script>
+  /* El cifrado del navegador solo funciona en https */
+  if (location.protocol === "http:" && !["localhost", "127.0.0.1"].includes(location.hostname)) location.replace(location.href.replace("http:", "https:"));
+  const c = window.APP_CONFIG;
+  document.getElementById("app-nombre").textContent = c.nombre;
+  document.getElementById("app-nombre").style.color = "inherit";
+  document.getElementById("app-lema").textContent = c.lema;
+  document.getElementById("anio").textContent = new Date().getFullYear();
+  document.title = c.nombre + " · Ingreso";
+  document.getElementById("chips").innerHTML = (c.chips || [])
+    .map(ch => `<div class="vidrio chip"><b>${ch.valor}</b><small>${ch.texto}</small></div>`).join("");
+
+  let PLANTAS = [];
+  const $ = id => document.getElementById(id);
+  const api = async (accion, cuerpo) => {
+    const r = await fetch("api/api.php?a=" + accion, { method: "POST", headers: { "Content-Type": "application/json", "X-Trazza": "1" }, body: JSON.stringify(cuerpo) });
+    const datos = await r.json().catch(() => null);
+    if (!datos) throw new Error("No hay conexión con el servidor. Recarga la página.");
+    if (!r.ok) throw new Error(datos.error === "sesion" ? "La sesión venció. Verifica tus datos de nuevo." : datos.error);
+    return datos;
+  };
+  /* Entrar al login siempre cierra la sesión anterior (así se puede cambiar de usuario) */
+  sessionStorage.removeItem("trazza_sesion");
+  sessionStorage.removeItem("trazza_panel");
+  api("salir", {}).catch(() => {});
+  /* Paso 1: verificar usuario y contraseña. Paso 2: elegir cliente / planta (solo las permitidas). */
+  let verificado = false;
+  function paso(n) {
+    const dos = n === 2;
+    $("usuario").readOnly = $("clave").readOnly = dos;
+    $("campo-planta").hidden = !dos;
+    $("fila-olvido").hidden = dos;
+    $("btn-volver").hidden = !dos;
+    $("btn-login").textContent = dos ? "Iniciar sesión" : "Verificar datos";
+    $("error-login").textContent = "";
+  }
+  $("btn-volver").addEventListener("click", () => { verificado = false; $("clave").value = ""; paso(1); $("clave").focus(); });
+  $("form-login").addEventListener("submit", async e => {
+    e.preventDefault();
+    const err = $("error-login"), btn = $("btn-login");
+    btn.disabled = true;
+    try {
+      if (!verificado) {
+        const usuario = $("usuario").value.trim(), clave = $("clave").value;
+        if (!usuario || !clave) { err.textContent = "Ingresa usuario y contraseña."; return; }
+        const r = await api("login", { usuario, clave });
+        if (r.panel) { // Progreso entra al panel de plantas
+          sessionStorage.setItem("trazza_panel", JSON.stringify(r));
+          location.href = "panel.html?v=" + Date.now();
+          return;
+        }
+        const permitidas = PLANTAS = r.plantas || [];
+        if (!permitidas.length) { err.textContent = "Este usuario no tiene una planta asignada."; return; }
+        verificado = true;
+        $("planta").innerHTML = (permitidas.length > 1 ? '<option value="">Selecciona cliente…</option>' : "")
+          + permitidas.map(p => `<option value="${p.id}">${p.nombre}</option>`).join("");
+        paso(2);
+        $("planta").focus();
+        return;
+      }
+      const planta = PLANTAS.find(p => p.id === $("planta").value);
+      if (!planta) { err.textContent = "Selecciona el cliente / planta."; return; }
+      const s = await api("planta", { planta: planta.id });
+      sessionStorage.setItem("trazza_sesion", JSON.stringify(s));
+      location.href = "app.html?v=" + Date.now(); // versión nueva: evita páginas viejas guardadas en el navegador
+    } catch (ex) {
+      err.textContent = ex.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

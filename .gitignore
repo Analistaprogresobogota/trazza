@@ -1,0 +1,19 @@
+# Secretos y datos sensibles: NUNCA al repositorio
+prototipo/api/config.php
+publicar/trazza/api/config.php
+prototipo/api/semilla.php
+publicar/trazza/api/semilla.php
+datos-fuente/
+usuarios-*.png
+*.xlsx
+*.xlsm
+*.sql
+
+# Generados / copias
+publicar/
+respaldos/
+pruebas/resultados_api.json
+pruebas/respaldo_prueba.sql
+
+# Sistema
+.DS_Store
