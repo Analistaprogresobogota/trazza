@@ -72,6 +72,12 @@ chmod 640 config.php
 | Entrar con un auxiliar y registrar una entrada | «Entrada guardada» y aparece en la tabla |
 | 5 claves erradas seguidas con un usuario | Al 5.º intento: «usuario bloqueado» (429) |
 
+La misma verificación se puede correr de forma automática. El script pide las contraseñas por teclado, registra una entrada de prueba con lote `VERIF-DESPLIEGUE` (la supervisora la puede eliminar después) y termina con `RESULTADO: PASS` o `FAIL`:
+
+```bash
+python3 -I pruebas/verificar_despliegue.py https://<servidor>/trazza progreso <usuario_auxiliar>
+```
+
 Si todo da lo esperado, avisar a la planta que pueden volver a registrar.
 
 ## Actualizar a una versión nueva más adelante
