@@ -114,3 +114,28 @@ Pasos 2 y 3 originales (referencia):
 
 ## NEXT ACTION
 Desplegar y ejecutar los pasos POST-DEPLOY.
+
+---
+
+# FINAL ENGINEERING REPORT: Trazza · puntos 4 a 7 (2026-11-10)
+
+**OVERALL STATUS: PARTIAL.** Implementado, probado en local y verificado en producción. Faltan las acciones del usuario con sus cuentas reales.
+
+| # | Cambio | Pruebas locales | Producción |
+|---|---|---|---|
+| 4 | `datos.js` público reemplazado por una nota vacía. La app no lo usaba; hay copia en `datos-fuente/`. | — | PASS: ya no expone datos |
+| 5 | Bloqueo: 5 fallos en 15 min bloquean al usuario 15 min. También aplica a usuarios inexistentes. Un ingreso correcto reinicia el conteo. Progreso puede desbloquear. | 8/8 PASS (`pruebas_acceso.py` L01–L08) | PASS: usuario inventado bloqueado al 5.º intento (429) |
+| 6 | Claves débiles: se marcan al entrar y en el panel. Ya no se pueden asignar (<8 caracteres, sin letras o sin números, comunes, igual al usuario). | 5/5 PASS (C01–C05) | PASS: archivos y acción desplegados. Las marcas reales se ven al abrir el panel |
+| 7 | Git local: `bdc32ea` (línea base) y `7701022` (puntos 5-6). Sin `config.php`, hashes ni datos de la planta. | Escaneo de secretos: 0 hallazgos | NOT APPLICABLE |
+
+- **Regresión:** API puntos 1-3, 31/31 PASS. Restauración del respaldo, 22/22 tablas idénticas.
+- **E2E en navegador:** mensaje de bloqueo en el login; el panel muestra «⚠ Clave débil» y «🔒 Bloqueado»; Desbloquear funciona y queda en el historial.
+- **Cambio en la base de producción:** se creó la tabla `accesos` en el primer intento de login. No se tocaron los datos existentes.
+- **Rollback:** `respaldos/Trazza_rollback_seguridad13.zip`. La tabla `accesos` puede quedarse, porque la versión anterior no la usa.
+- **Riesgo conocido:** cualquiera que sepa un nombre de usuario puede bloquearlo 15 minutos a propósito. Progreso lo desbloquea.
+
+## PENDIENTE (requiere las cuentas del usuario)
+- Descargar el primer respaldo de producción («⬇ Respaldo BD»).
+- En Panel → Usuarios, asignar clave nueva con 🔑 a quien aparezca con «⚠ Clave débil», o desactivar los usuarios genéricos de prueba.
+- Smoke test con un auxiliar real.
+- GitHub (repositorio privado): no hecho; requiere decisión y cuenta del usuario.
