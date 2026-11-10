@@ -54,6 +54,8 @@ function vPlantas() {
         <span class="chip-e ${p.activa ? "e-ok" : "e-gris"}">${p.activa ? "Activa" : "Desactivada"}</span></div>
       <div class="planta-mods">${p.modulos.map(m => `<span class="mod-chip">${esc(DATA.modulos[m])}</span>`).join("") || `<span class="mod-chip fijo">Solo módulos fijos</span>`}</div>
       <div class="planta-usuarios">👥 ${act.length} usuario${act.length === 1 ? "" : "s"} activo${act.length === 1 ? "" : "s"}${porRol ? ` · ${porRol}` : ""}</div>
+      ${(() => { const d = act.filter(u => u.debil).length, bl = act.filter(u => u.bloqueado).length;
+        return d || bl ? `<div class="planta-usuarios" style="color:var(--warn-ink);font-weight:700">${d ? `⚠ ${d} con clave débil` : ""}${d && bl ? " · " : ""}${bl ? `🔒 ${bl} bloqueado${bl === 1 ? "" : "s"}` : ""} — revisa en Usuarios</div>` : ""; })()}
       <div class="planta-acciones">
         ${p.activa ? `<button class="btn btn-primario" data-entrar="${esc(p.id)}">👁 Ver planta</button>` : ""}
         <button class="btn btn-borde" data-modulos="${esc(p.id)}">⚙ Módulos</button>
@@ -111,10 +113,13 @@ function abrirUsuarios(id) {
       <td class="fuerte">${esc(u.usuario)}</td>
       <td><input class="input-tabla" data-u-nombre="${esc(u.usuario)}" value="${esc(u.nombre)}"></td>
       <td><select class="input-tabla" data-u-rol="${esc(u.usuario)}">${DATA.roles.map(r => `<option value="${r}" ${r === u.rol ? "selected" : ""}>${ROL_TXT[r]}</option>`).join("")}</select></td>
-      <td><span class="chip-e ${u.activo ? "e-ok" : "e-gris"}">${u.activo ? "Activo" : "Inactivo"}</span></td>
+      <td><span class="chip-e ${u.activo ? "e-ok" : "e-gris"}">${u.activo ? "Activo" : "Inactivo"}</span>
+        ${u.bloqueado ? `<span class="chip-e e-alerta" title="Varios intentos fallidos">🔒 Bloqueado hasta ${esc(u.bloqueado)}</span>` : ""}
+        ${u.debil ? `<span class="chip-e e-alerta" title="Contraseña fácil de adivinar (por ejemplo 1234). Asígnale una nueva con 🔑.">⚠ Clave débil</span>` : ""}</td>
       <td style="white-space:nowrap"><button class="btn btn-mini btn-primario" data-u-guardar="${esc(u.usuario)}">Guardar</button>
         <button class="btn btn-mini btn-borde" data-u-clave="${esc(u.usuario)}">🔑 Contraseña</button>
-        <button class="btn btn-mini btn-borde" data-u-activo="${esc(u.usuario)}">${u.activo ? "Desactivar" : "Activar"}</button></td></tr>`);
+        <button class="btn btn-mini btn-borde" data-u-activo="${esc(u.usuario)}">${u.activo ? "Desactivar" : "Activar"}</button>
+        ${u.bloqueado ? `<button class="btn btn-mini btn-amarillo-s" data-u-desbloquear="${esc(u.usuario)}">🔓 Desbloquear</button>` : ""}</td></tr>`);
   abrirModal(`Usuarios · ${p.nombre}`, `<div style="padding:18px 22px">
     <div class="tabla-wrap"><table><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
       <tbody>${filas.join("") || `<tr><td colspan="5" class="vacio">Sin usuarios</td></tr>`}</tbody></table></div>
@@ -139,7 +144,7 @@ function abrirUsuarios(id) {
 /* Botones de la tabla de usuarios (un solo manejador para el modal) */
 let usuariosDe = null;
 $("#modal-cuerpo").addEventListener("click", async e => {
-    const b = e.target.closest("button[data-u-guardar], button[data-u-activo], button[data-u-clave]"); if (!b || !usuariosDe) return;
+    const b = e.target.closest("button[data-u-guardar], button[data-u-activo], button[data-u-clave], button[data-u-desbloquear]"); if (!b || !usuariosDe) return;
     const id = usuariosDe, p = planta(id);
     const u = k => p.usuarios.find(x => x.usuario === k);
     const guardarU = async (k, extra = {}) => {
@@ -149,13 +154,14 @@ $("#modal-cuerpo").addEventListener("click", async e => {
     };
     try {
       if (b.dataset.uGuardar) { await guardarU(b.dataset.uGuardar); toast("Usuario actualizado."); }
+      if (b.dataset.uDesbloquear) { await api("desbloquear_usuario", { usuario: b.dataset.uDesbloquear }); await cargar(); abrirUsuarios(id); toast("Usuario desbloqueado: ya puede intentar entrar."); }
       if (b.dataset.uActivo) {
         const x = u(b.dataset.uActivo);
         if (x.activo && !confirm(`¿Desactivar a ${x.usuario}? Ya no podrá entrar (su historial queda guardado).`)) return;
         await guardarU(x.usuario, { activo: !x.activo }); toast(x.activo ? "Usuario desactivado." : "Usuario activado.");
       }
       if (b.dataset.uClave) {
-        const k = b.dataset.uClave, nueva = prompt(`Nueva contraseña para ${k} (mínimo 6 caracteres). Puedes dejar la sugerida o escribir otra:`, generarClave());
+        const k = b.dataset.uClave, nueva = prompt(`Nueva contraseña para ${k} (mínimo 8 caracteres, con letras y números). Puedes dejar la sugerida o escribir otra:`, generarClave());
         if (nueva == null) return;
         await guardarU(k, { clave: nueva.trim() });
         mostrarCreados(`Contraseña nueva`, [{ usuario: k, nombre: u(k).nombre, rol: u(k).rol, clave: nueva.trim() }]);

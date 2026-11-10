@@ -1,9 +1,9 @@
 #!/bin/bash
 # R03: restaura el respaldo descargado en una base vacía y compara cada tabla (filas + checksum)
-SP="$(dirname "$0")"
+RESPALDO="${1:?Uso: prueba_restaurar.sh ruta/al/respaldo.sql}"
 M() { mariadb --socket=/tmp/tzdb.sock -u root "$@"; }
 M -e "DROP DATABASE IF EXISTS trazza_restore_prueba; CREATE DATABASE trazza_restore_prueba CHARACTER SET utf8mb4;"
-M trazza_restore_prueba < "$SP/respaldo_prueba.sql" && echo "IMPORT-OK"
+M trazza_restore_prueba < "$RESPALDO" && echo "IMPORT-OK" || { echo "IMPORT-FALLÓ"; exit 1; }
 ok=0; bad=0
 for t in $(M -N trazza_prueba -e "show tables"); do
   a=$(M -N trazza_prueba -e "select count(*) from \`$t\`")

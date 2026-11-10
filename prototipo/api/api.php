@@ -2,6 +2,7 @@
 /* API de Trazza: login, datos de la planta de la sesión y guardado fila por fila */
 require __DIR__ . '/bd.php';
 require __DIR__ . '/reglas.php';
+require __DIR__ . '/accesos.php';
 session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax', 'secure' => !empty($_SERVER['HTTPS']), 'path' => '/']);
 session_name('trazza');
 session_start();
@@ -27,7 +28,7 @@ function validar_usuario(array $x, bool $nuevo): ?string {
   if (mb_strlen(trim($x['nombre'] ?? '')) < 3) return 'Escribe el nombre de cada usuario.';
   if (!in_array($x['rol'] ?? '', ROLES_PLANTA, true)) return 'Rol no válido.';
   $k = $x['clave'] ?? '';
-  if (($nuevo || $k !== '') && mb_strlen($k) < 6) return 'La contraseña de "' . ($x['usuario'] ?? '') . '" debe tener al menos 6 caracteres.';
+  if (($nuevo || $k !== '') && clave_debil($k, $x['usuario'] ?? '')) return 'La contraseña de "' . ($x['usuario'] ?? '') . '" es muy fácil: usa al menos 8 caracteres combinando letras y números, que no sea el usuario ni algo como 1234 (o usa el botón para generarla).';
   return null;
 }
 /* Deja constancia en el historial de modificaciones de la planta */
@@ -39,12 +40,21 @@ function bitacora_admin(PDO $pdo, string $planta, string $accion, string $regist
 try {
   switch ($accion) {
     case 'login': {
-      $u = strtolower(trim($cuerpo['usuario'] ?? ''));
+      $u = mb_substr(strtolower(trim($cuerpo['usuario'] ?? '')), 0, 60);
       $k = preg_replace('/[\x{2010}-\x{2015}\x{2212}]/u', '-', trim($cuerpo['clave'] ?? '')); // al copiar de una imagen el guion llega como "–"
-      $st = bd()->prepare('SELECT * FROM usuarios WHERE usuario = ? AND activo = 1');
+      $pdo = bd();
+      /* Bloqueo por intentos fallidos: mientras dure, ni se revisa la contraseña */
+      if ($m = minutos_bloqueo($pdo, $u)) responder(['error' => "Usuario bloqueado por varios intentos fallidos. Intenta de nuevo en $m minuto(s) o pide a Progreso que lo desbloquee."], 429);
+      $st = $pdo->prepare('SELECT * FROM usuarios WHERE usuario = ? AND activo = 1');
       $st->execute([$u]);
       $fila = $st->fetch();
-      if (!$fila || !password_verify($k, $fila['clave_hash'])) { sleep(1); responder(['error' => 'Usuario o contraseña incorrectos.'], 401); }
+      if (!$fila || !password_verify($k, $fila['clave_hash'])) {
+        [$quedan, $bloqueo] = registrar_fallo($pdo, $u); /* cuenta igual si el usuario no existe: no revela cuáles existen */
+        sleep(1);
+        if ($bloqueo) responder(['error' => "Demasiados intentos fallidos. El usuario queda bloqueado $bloqueo minutos."], 429);
+        responder(['error' => 'Usuario o contraseña incorrectos.' . ($quedan <= 2 ? " Te quedan $quedan intento(s) antes del bloqueo." : '')], 401);
+      }
+      registrar_ingreso($pdo, $fila['usuario'], clave_debil($k, $fila['usuario']));
       session_regenerate_id(true);
       $_SESSION = ['verificado' => $fila['usuario']];
       if ($fila['rol'] === 'Progreso') { // Progreso va al panel de plantas
@@ -145,10 +155,24 @@ try {
       echo "SET FOREIGN_KEY_CHECKS=1;\n-- Fin del respaldo\n";
       exit;
     }
+    case 'desbloquear_usuario': {
+      exigir_admin();
+      $pdo = bd();
+      $st = $pdo->prepare("SELECT usuario, planta FROM usuarios WHERE usuario = ? AND rol <> 'Progreso'");
+      $st->execute([strtolower(trim($cuerpo['usuario'] ?? ''))]);
+      $u = $st->fetch();
+      if (!$u) responder(['error' => 'Usuario no encontrado.'], 404);
+      desbloquear($pdo, $u['usuario']);
+      bitacora_admin($pdo, $u['planta'], 'Usuario desbloqueado', strtoupper($u['usuario']), 'Desbloqueado por Progreso');
+      responder(['ok' => true]);
+    }
     case 'admin_plantas': {
       exigir_admin();
       $usuarios = [];
-      foreach (bd()->query("SELECT usuario, nombre, rol, planta, activo FROM usuarios WHERE rol <> 'Progreso' ORDER BY rol DESC, usuario") as $u) $usuarios[$u['planta']][] = ['usuario' => $u['usuario'], 'nombre' => $u['nombre'], 'rol' => $u['rol'], 'activo' => (int)$u['activo'] === 1];
+      $filas = bd()->query("SELECT usuario, nombre, rol, planta, activo, clave_hash FROM usuarios WHERE rol <> 'Progreso' ORDER BY rol DESC, usuario")->fetchAll();
+      $acc = estado_accesos(bd(), $filas);
+      foreach ($filas as $u) $usuarios[$u['planta']][] = ['usuario' => $u['usuario'], 'nombre' => $u['nombre'], 'rol' => $u['rol'], 'activo' => (int)$u['activo'] === 1,
+        'debil' => $acc[$u['usuario']]['debil'] ?? null, 'bloqueado' => $acc[$u['usuario']]['bloqueado'] ?? null];
       responder(['modulos' => MODULOS, 'roles' => ROLES_PLANTA, 'plantas' => array_values(array_map(fn($p) => planta_publica($p) + ['usuarios' => $usuarios[$p['id']] ?? []], plantas_bd()))]);
     }
     case 'crear_planta': {
@@ -181,7 +205,7 @@ try {
       $pdo->prepare('INSERT INTO plantas (id, nombre, prefijo, modulos, activa, creada) VALUES (?,?,?,?,1,NOW())')->execute([$id, $nombre, $prefijo, json_encode($modulos)]);
       plantas_bd(true);
       $ins = $pdo->prepare('INSERT INTO usuarios (usuario, nombre, rol, planta, clave_hash, activo) VALUES (?,?,?,?,?,1)');
-      foreach ($usuarios as $x) $ins->execute([$x['usuario'], $x['nombre'], $x['rol'], $id, password_hash($x['clave'], PASSWORD_BCRYPT)]);
+      foreach ($usuarios as $x) { $ins->execute([$x['usuario'], $x['nombre'], $x['rol'], $id, password_hash($x['clave'], PASSWORD_BCRYPT)]); clave_cambiada($pdo, $x['usuario'], $x['clave']); }
       bitacora_admin($pdo, $id, 'Planta creada', $id, $nombre . ' · módulos: ' . (implode(', ', array_map(fn($m) => MODULOS[$m], $modulos)) ?: 'solo los fijos') . ' · usuarios: ' . implode(', ', array_map(fn($x) => strtoupper($x['usuario']) . " ({$x['rol']})", $usuarios)));
       responder(['id' => $id]);
     }
@@ -218,6 +242,7 @@ try {
         if ($e = validar_usuario($x, true)) responder(['error' => $e], 400);
         if ($previo) responder(['error' => 'Ya existe el usuario "' . $x['usuario'] . '". Elige otro.'], 400);
         $pdo->prepare('INSERT INTO usuarios (usuario, nombre, rol, planta, clave_hash, activo) VALUES (?,?,?,?,?,1)')->execute([$x['usuario'], $x['nombre'], $x['rol'], $planta, password_hash($x['clave'], PASSWORD_BCRYPT)]);
+        clave_cambiada($pdo, $x['usuario'], $x['clave']);
         bitacora_admin($pdo, $planta, 'Usuario creado', strtoupper($x['usuario']), "{$x['nombre']} · {$x['rol']}");
         responder(['ok' => true]);
       }
@@ -225,7 +250,7 @@ try {
       if ($e = validar_usuario($x, false)) responder(['error' => $e], 400);
       $activo = array_key_exists('activo', $cuerpo) ? ($cuerpo['activo'] ? 1 : 0) : (int)$previo['activo'];
       $pdo->prepare('UPDATE usuarios SET nombre = ?, rol = ?, activo = ? WHERE usuario = ?')->execute([$x['nombre'], $x['rol'], $activo, $x['usuario']]);
-      if ($x['clave'] !== '') $pdo->prepare('UPDATE usuarios SET clave_hash = ? WHERE usuario = ?')->execute([password_hash($x['clave'], PASSWORD_BCRYPT), $x['usuario']]);
+      if ($x['clave'] !== '') { $pdo->prepare('UPDATE usuarios SET clave_hash = ? WHERE usuario = ?')->execute([password_hash($x['clave'], PASSWORD_BCRYPT), $x['usuario']]); clave_cambiada($pdo, $x['usuario'], $x['clave']); }
       $det = [];
       if ($x['nombre'] !== $previo['nombre']) $det[] = "nombre: {$previo['nombre']} → {$x['nombre']}";
       if ($x['rol'] !== $previo['rol']) $det[] = "rol: {$previo['rol']} → {$x['rol']}";
