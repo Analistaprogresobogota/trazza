@@ -157,6 +157,12 @@ function kitsDe(cod) {
 }
 const esPT = cod => D().maestro.some(m => m.codigo === String(cod) && m.tipo === "PT");
 
+/* Orden de uso de los lotes: los de la bodega anterior (Colbon, prefijo CLB) salen SIEMPRE primero porque
+   son físicamente los más viejos, aunque se hayan registrado después (saldos iniciales); luego FIFO por fecha. */
+const LOTES_PRIMERO = ["CLB"];
+const esLotePrimero = lote => LOTES_PRIMERO.some(p => U(lote).startsWith(p));
+const ordenFIFO = (a, b) => (esLotePrimero(b.lote) - esLotePrimero(a.lote)) || (a.fecha || "9").localeCompare(b.fecha || "9");
+
 /* Hojas CONTROL LOTES / LOTES POR REVISAR (fórmula LET con FIFO) */
 function calcLotes() {
   const { recepciones, salidas, devoluciones } = D();
@@ -179,24 +185,26 @@ function calcLotes() {
     return { codigo: p.cod, insumo: desc(p.cod), lote: p.lot, fecha: fechas[0] || "", vence, entradas: ent, salidas: sal, saldo: ent - sal };
   });
   filas.forEach(f => {
-    const minF = filas.filter(o => o.codigo === f.codigo && o.saldo > 0).map(o => o.fecha || "0").sort()[0];
-    f.prioridad = f.saldo < 0 ? "REVISAR" : f.saldo === 0 ? "AGOTADO" : !f.fecha ? "REVISAR FECHA" : f.fecha === minF ? "USAR PRIMERO" : "EN ESPERA";
+    // el primero en salir de cada insumo (CLB primero, luego la fecha más antigua); empates de fecha también van primero
+    const primero = filas.filter(o => o.codigo === f.codigo && o.saldo > 0 && o.fecha).sort(ordenFIFO)[0];
+    const esPrimero = primero && esLotePrimero(f.lote) === esLotePrimero(primero.lote) && f.fecha === primero.fecha;
+    f.prioridad = f.saldo < 0 ? "REVISAR" : f.saldo === 0 ? "AGOTADO" : !f.fecha ? "REVISAR FECHA" : esPrimero ? "USAR PRIMERO" : "EN ESPERA";
     f.control = f.saldo < 0 ? "Falta entrada o saldo inicial" : f.saldo === 0 ? "Cerrado" : !f.fecha ? "Falta fecha del lote" : "Disponible";
   });
   return filas;
 }
-/* Orden de uso: por insumo, primero lo disponible por fecha (FIFO), luego agotados y por revisar */
+/* Orden de uso: por insumo, primero lo disponible (CLB primero, luego FIFO por fecha), luego agotados y por revisar */
 const RANGO_PRIOR = { "USAR PRIMERO": 0, "EN ESPERA": 1, "REVISAR FECHA": 2, REVISAR: 3, AGOTADO: 4 };
 function lotesEnOrdenDeUso(lotes) {
-  const orden = [...lotes].sort((a, b) => a.insumo.localeCompare(b.insumo) || RANGO_PRIOR[a.prioridad] - RANGO_PRIOR[b.prioridad] || (a.fecha || "9").localeCompare(b.fecha || "9"));
+  const orden = [...lotes].sort((a, b) => a.insumo.localeCompare(b.insumo) || RANGO_PRIOR[a.prioridad] - RANGO_PRIOR[b.prioridad] || ordenFIFO(a, b));
   const n = {};
   orden.forEach(l => { l.orden = l.saldo > 0 ? (n[l.codigo] = (n[l.codigo] || 0) + 1) : ""; });
   return orden;
 }
 
-/* Reparte una cantidad entre los lotes disponibles en orden FIFO (puede usar 2 o más lotes) */
+/* Reparte una cantidad entre los lotes disponibles en orden de uso: CLB primero, luego FIFO (puede usar 2 o más lotes) */
 function repartirFIFO(cod, cantidad, saldos) {
-  const lotes = saldos.filter(l => l.codigo === cod && l.saldo > 0).sort((a, b) => (a.fecha || "9").localeCompare(b.fecha || "9"));
+  const lotes = saldos.filter(l => l.codigo === cod && l.saldo > 0).sort(ordenFIFO);
   const partes = [];
   let resta = cantidad;
   for (const l of lotes) {
