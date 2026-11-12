@@ -28,12 +28,6 @@ const PUEDE = {
   editarCatalogos: ES.supervisor,    // tablas de insumos y proveedores
 };
 const BODEGAS = PLANTA === "PRUEBA" ? ["KT", "TQ"] : ["Bodega"];
-/* Ajustes por planta. TQ Devoluciones (pedido 2026-11-11): las entradas no piden fechas de fabricación ni de
-   vencimiento, "Remisión" admite también la orden de producción y las salidas no tienen el atajo de kits. */
-const AJUSTES_PLANTA = PLANTA === "PRUEBA"
-  ? { fechasLote: false, atajoKits: false, remision: "Remisión / Orden de producción", remisionCorta: "Remisión / OP" }
-  : { fechasLote: true, atajoKits: true, remision: "Remisión", remisionCorta: "Remisión" };
-const ES_FECHA_LOTE = k => /^fecha(Fabricacion|Vencimiento)$/.test(k);
 const NOMBRE_BODEGA = { KT: "Bodega KT", TQ: "Bodega TKT" };
 const nomBodega = b => NOMBRE_BODEGA[b] || b;
 const TIPOS_AVERIA = ["Conteo", "Rechazo"];
@@ -244,7 +238,7 @@ const campoFecha = id => `<div class="campo"><label>Fecha y hora</label><div cla
    SOLICITUDES DE EDICIÓN (las aprueba la supervisora o Progreso)
    ===================================================================== */
 const TABLAS = {
-  recepciones: { nombre: "Entrada", campos: [["bodega", "Bodega", ["sel", BODEGAS]], ["ordenCompra", "Orden de compra"], ["factura", "Factura"], ["proveedor", "Proveedor", "proveedor"], ["remision", AJUSTES_PLANTA.remision], ["codigo", "Insumo", "insumo"], ["cantidad", "Cantidad recibida", "number"], ["unidad", "Unidad"], ["lote", "Lote"], ["fechaFabricacion", "Fecha de fabricación", "date"], ["fechaVencimiento", "Fecha de vencimiento", "date"], ["observaciones", "Observaciones"]].filter(([k]) => AJUSTES_PLANTA.fechasLote || !ES_FECHA_LOTE(k)) },
+  recepciones: { nombre: "Entrada", campos: [["bodega", "Bodega", ["sel", BODEGAS]], ["ordenCompra", "Orden de compra"], ["factura", "Factura"], ["proveedor", "Proveedor", "proveedor"], ["remision", "Remisión"], ["codigo", "Insumo", "insumo"], ["cantidad", "Cantidad recibida", "number"], ["unidad", "Unidad"], ["lote", "Lote"], ["fechaFabricacion", "Fecha de fabricación", "date"], ["fechaVencimiento", "Fecha de vencimiento", "date"], ["observaciones", "Observaciones"]] },
   salidas: { nombre: "Salida", campos: [["ordenProduccion", "Orden de producción"], ["destino", "Destino"], ["codigo", "Insumo", "insumo"], ["cantidad", "Cantidad salida", "number"], ["unidad", "Unidad"], ["lote", "Lote"], ["observaciones", "Observaciones"]] },
   devoluciones: { nombre: "Devolución", campos: [["op", "Orden de producción"], ["codigo", "Insumo", "insumo"], ["lote", "Lote"], ["buenas", "Unidades buenas (sobrante)", "number"], ["malas", "Unidades malas (rechazo)", "number"], ["observaciones", "Observaciones"]] },
   averias: { nombre: "Avería", campos: [["tipo", "Tipo", ["sel", TIPOS_AVERIA]], ["codigo", "Insumo", "insumo"], ["lote", "Lote"], ["cantidad", "Cantidad avería", "number"], ["observaciones", "Observaciones / causa"]] },
@@ -383,14 +377,14 @@ function formEntrada() {
         <div class="campo"><label for="e-factura">Facturas <span class="req">*</span></label><input id="e-factura" placeholder="Ej: FE201210 o N/A"></div>
         <div class="campo"><label for="e-prov">Proveedor <span class="req">*</span></label><select id="e-prov">${opciones(OPC_PROVEEDORES(), "", "Selecciona un proveedor…")}</select>
           <span class="ayuda">¿No está? La supervisora lo agrega en Insumos y proveedores.</span></div>
-        <div class="campo"><label for="e-rem">${AJUSTES_PLANTA.remision} <span class="req">*</span></label><input id="e-rem" placeholder="${AJUSTES_PLANTA.fechasLote ? "Ej: REM-00402409" : "Ej: REM-00402409 u OP 1956314"}"></div>
+        <div class="campo"><label for="e-rem">Remisión <span class="req">*</span></label><input id="e-rem" placeholder="Ej: REM-00402409"></div>
         <div class="campo ancho"><label for="e-insumo">Insumo <span class="req">*</span></label>
           <select id="e-insumo">${opciones(OPC_INSUMOS(), "", "Selecciona un insumo…")}</select><span class="ayuda" id="e-info"></span></div>
         <div class="campo"><label for="e-cant">Cantidad recibida <span class="req">*</span></label><input type="number" id="e-cant" min="1" step="1" placeholder="0"><span class="ayuda">Número entero mayor a 0</span></div>
         <div class="campo"><label for="e-und">Unidad</label><input id="e-und" readonly placeholder="Según el insumo"></div>
         <div class="campo"><label for="e-lote">Lote <span class="req">*</span></label><input id="e-lote" placeholder="Ej: TKT0346024 o N/A"></div>
-        ${AJUSTES_PLANTA.fechasLote ? `<div class="campo"><label for="e-fab">Fecha de fabricación <span class="req">*</span></label><input type="date" id="e-fab" max="${ahora().fecha}">${checkNA("e-fab")}</div>
-        <div class="campo"><label for="e-venc">Fecha de vencimiento <span class="req">*</span></label><input type="date" id="e-venc"><span class="ayuda">Debe ser posterior a la de fabricación</span>${checkNA("e-venc")}</div>` : ""}
+        <div class="campo"><label for="e-fab">Fecha de fabricación <span class="req">*</span></label><input type="date" id="e-fab" max="${ahora().fecha}">${checkNA("e-fab")}</div>
+        <div class="campo"><label for="e-venc">Fecha de vencimiento <span class="req">*</span></label><input type="date" id="e-venc"><span class="ayuda">Debe ser posterior a la de fabricación</span>${checkNA("e-venc")}</div>
         ${moduloActivo("calidad") ? `<div class="campo"><label for="e-calidad">¿Requiere revisión de calidad? <span class="req">*</span></label><select id="e-calidad">${opciones([["No", "No"], ["Sí", "Sí · crear ticket para Calidad"]], "No")}</select>
           <span class="ayuda" id="e-cal-ayuda">El material queda disponible de una vez.</span></div>` : `<input type="hidden" id="e-calidad" value="No">`}
         <div class="campo"><label for="e-por">Recibido por</label><input id="e-por" value="${esc(SESION.usuario)}" readonly></div>
@@ -401,8 +395,8 @@ function formEntrada() {
     </form>`;
 }
 function tablaRecepciones(filas) {
-  return tabla([{ t: "Fecha" }, { t: "Bodega" }, { t: "OC" }, { t: "Facturas" }, { t: "Proveedor" }, { t: AJUSTES_PLANTA.remisionCorta }, { t: "Insumo" }, { t: "Cantidad", cl: "num" }, { t: "Und" }, { t: "Lote" }, ...(AJUSTES_PLANTA.fechasLote ? [{ t: "Fabricación" }, { t: "Vencimiento" }] : []), { t: "Calidad" }, { t: "Recibido por" }, { t: "Obs." }, { t: "" }],
-    filas.map(r => `<tr><td>${fFecha(r)}</td><td>${esc(r.bodega ? nomBodega(r.bodega) : "—")}</td><td>${esc(r.ordenCompra)}</td><td>${esc(r.factura || "—")}</td><td>${esc(r.proveedor)}</td><td>${esc(r.remision)}</td><td class="txt">${esc(insumoTxt(r.codigo))}</td><td class="num fuerte">${fmtN(r.cantidad)}</td><td>${esc(r.unidad)}</td><td>${esc(r.lote)}</td>${AJUSTES_PLANTA.fechasLote ? `<td>${r.fechaFabricacion ? fmtF(r.fechaFabricacion) : "—"}</td><td>${r.fechaVencimiento ? fmtF(r.fechaVencimiento) : "—"}</td>` : ""}
+  return tabla([{ t: "Fecha" }, { t: "Bodega" }, { t: "OC" }, { t: "Facturas" }, { t: "Proveedor" }, { t: "Remisión" }, { t: "Insumo" }, { t: "Cantidad", cl: "num" }, { t: "Und" }, { t: "Lote" }, { t: "Fabricación" }, { t: "Vencimiento" }, { t: "Calidad" }, { t: "Recibido por" }, { t: "Obs." }, { t: "" }],
+    filas.map(r => `<tr><td>${fFecha(r)}</td><td>${esc(r.bodega ? nomBodega(r.bodega) : "—")}</td><td>${esc(r.ordenCompra)}</td><td>${esc(r.factura || "—")}</td><td>${esc(r.proveedor)}</td><td>${esc(r.remision)}</td><td class="txt">${esc(insumoTxt(r.codigo))}</td><td class="num fuerte">${fmtN(r.cantidad)}</td><td>${esc(r.unidad)}</td><td>${esc(r.lote)}</td><td>${r.fechaFabricacion ? fmtF(r.fechaFabricacion) : "—"}</td><td>${r.fechaVencimiento ? fmtF(r.fechaVencimiento) : "—"}</td>
       <td>${r.origen === "saldo-inicial" ? `<span class="chip-e e-info">Saldo inicial</span>` : `<span class="chip-e ${ESTADO_CAL_CHIP[r.calidad?.estado] || "e-gris"}" title="${esc(r.calidad?.ticket || "")}">${esc(r.calidad?.estado || "No aplica")}${r.calidad?.ticket ? " · " + esc(r.calidad.ticket) : ""}</span>`}</td>
       <td>${esc(r.recibidoPor)}</td><td>${esc(r.observaciones)}</td><td>${btnEditar("recepciones", r.id)}</td></tr>`));
 }
@@ -415,26 +409,26 @@ function initEntradas() {
   $("#e-calidad").addEventListener("change", e => {
     $("#e-cal-ayuda").textContent = e.target.value === "Sí" ? "Se crea un ticket para Calidad. El material queda BLOQUEADO hasta que Calidad lo apruebe." : "El material queda disponible de una vez.";
   });
-  $("#form-entrada").addEventListener("reset", () => { $("#e-info").textContent = ""; setTimeout(() => { $("#e-por").value = SESION.usuario; $("#e-und").value = ""; [$("#e-fab"), $("#e-venc")].forEach(x => x && (x.disabled = false)); }); });
+  $("#form-entrada").addEventListener("reset", () => { $("#e-info").textContent = ""; setTimeout(() => { $("#e-por").value = SESION.usuario; $("#e-und").value = ""; $("#e-fab").disabled = $("#e-venc").disabled = false; }); });
   $("#form-entrada").addEventListener("submit", e => {
     e.preventDefault();
     const err = $("#e-error"); err.hidden = true;
     $$(".campo", e.target).forEach(c => c.classList.remove("invalido"));
-    const req = ["e-bodega", "e-oc", "e-factura", "e-prov", "e-rem", "e-insumo", "e-cant", "e-lote", "e-fab", "e-venc"].filter(id => $("#" + id) && !$("#" + id).value.trim() && !$(`#${id}-na`)?.checked);
+    const req = ["e-bodega", "e-oc", "e-factura", "e-prov", "e-rem", "e-insumo", "e-cant", "e-lote", "e-fab", "e-venc"].filter(id => !$("#" + id).value.trim() && !$(`#${id}-na`)?.checked);
     const cant = Number($("#e-cant").value);
     if (!req.includes("e-cant") && (!Number.isInteger(cant) || cant <= 0)) req.push("e-cant");
     if (req.length) { req.forEach(id => $("#" + id).closest(".campo").classList.add("invalido")); err.textContent = "Revisa los campos marcados en rojo (obligatorios; la cantidad debe ser un entero mayor a 0)."; err.hidden = false; return; }
     const v = id => $("#" + id).value.trim();
-    const fab = AJUSTES_PLANTA.fechasLote ? fechaONA("e-fab") : "N/A", venc = AJUSTES_PLANTA.fechasLote ? fechaONA("e-venc") : "N/A";
-    const errFecha = !AJUSTES_PLANTA.fechasLote ? null : fab !== "N/A" && fab > ahora().fecha ? ["e-fab", "La fecha de fabricación no puede ser futura."] : fab !== "N/A" && venc !== "N/A" && venc <= fab ? ["e-venc", "La fecha de vencimiento debe ser posterior a la de fabricación."] : null;
+    const fab = fechaONA("e-fab"), venc = fechaONA("e-venc");
+    const errFecha = fab !== "N/A" && fab > ahora().fecha ? ["e-fab", "La fecha de fabricación no puede ser futura."] : fab !== "N/A" && venc !== "N/A" && venc <= fab ? ["e-venc", "La fecha de vencimiento debe ser posterior a la de fabricación."] : null;
     if (errFecha) { $("#" + errFecha[0]).closest(".campo").classList.add("invalido"); err.textContent = errFecha[1]; err.hidden = false; return; }
     const requiere = v("e-calidad") === "Sí";
     const id = nuevoId("R");
     const ticket = requiere ? nuevoId("CAL-") : "";
     D().recepciones.push({ id, origen: "compra", ...ahora(), bodega: v("e-bodega"), ordenCompra: v("e-oc"), factura: v("e-factura"), proveedor: v("e-prov"), remision: v("e-rem"), codigo: v("e-insumo"), cantidad: cant,
-      unidad: v("e-und"), lote: U(v("e-lote")), ...(AJUSTES_PLANTA.fechasLote ? { fechaFabricacion: fab, fechaVencimiento: venc } : {}), recibidoPor: SESION.usuario, observaciones: v("e-obs"),
+      unidad: v("e-und"), lote: U(v("e-lote")), fechaFabricacion: fab, fechaVencimiento: venc, recibidoPor: SESION.usuario, observaciones: v("e-obs"),
       calidad: requiere ? { requiere: "Sí", estado: "Pendiente", ticket, creado: new Date().toISOString() } : { requiere: "No", estado: "No aplica" } });
-    registrarBitacora("Entrada registrada", "Entrada", id, `${insumoTxt(v("e-insumo"))} · +${cant} · lote ${U(v("e-lote"))}${AJUSTES_PLANTA.fechasLote ? ` · vence ${fmtF(venc)}` : ""} · ${nomBodega(v("e-bodega"))} · factura ${v("e-factura")}${requiere ? ` · ticket ${ticket} para Calidad` : ""}`);
+    registrarBitacora("Entrada registrada", "Entrada", id, `${insumoTxt(v("e-insumo"))} · +${cant} · lote ${U(v("e-lote"))} · vence ${fmtF(venc)} · ${nomBodega(v("e-bodega"))} · factura ${v("e-factura")}${requiere ? ` · ticket ${ticket} para Calidad` : ""}`);
     guardar(); toast(requiere ? `Entrada guardada. Ticket ${ticket} enviado a Calidad (material bloqueado).` : `Entrada guardada: +${fmtN(cant)} ${desc(v("e-insumo"))}`);
     cerrarModal(); actualizarBadges(); render();
   });
@@ -453,11 +447,11 @@ function formSalida() {
         <div class="campo"><label for="s-entrega">Entregado por</label><input id="s-entrega" value="${esc(SESION.usuario)}" readonly></div>
       </div>
       <div class="seccion-form"><h3>Insumos que salen</h3><button type="button" class="btn btn-borde btn-mini" id="btn-linea">+ Agregar insumo</button></div>
-      ${AJUSTES_PLANTA.atajoKits ? `<div class="ayuda-kit">
+      <div class="ayuda-kit">
         <div class="campo"><label for="k-kit">Atajo: cargar insumos de un kit</label><select id="k-kit"><option value="">Selecciona kit…</option>${D().kits.map((k, i) => `<option value="${i}">${esc(k.kit)}</option>`).join("")}</select></div>
         <div class="campo"><label for="k-cant">Kits a producir</label><input type="number" id="k-cant" min="1" step="1" placeholder="0"></div>
         <button type="button" class="btn btn-amarillo-s" id="btn-kit">Calcular</button>
-      </div>` : ""}
+      </div>
       <div id="lineas"></div>
       <p class="aviso rojo" id="s-error" hidden></p>
       <div class="acciones-form"><button type="button" class="btn btn-borde" data-cerrar>Cancelar</button><button type="button" class="btn btn-borde" id="btn-limpiar-s">Limpiar</button><button class="btn btn-primario">Guardar salida</button></div>
@@ -507,7 +501,7 @@ function initSalidas() {
   agregarLinea();
   $("#btn-linea").addEventListener("click", () => agregarLinea());
   $("#btn-limpiar-s").addEventListener("click", () => abrirRegistro("salidas"));
-  $("#btn-kit")?.addEventListener("click", () => {
+  $("#btn-kit").addEventListener("click", () => {
     const k = D().kits[$("#k-kit").value], n = Number($("#k-cant").value);
     if (!k || !(n > 0)) { toast("Selecciona un kit y la cantidad de kits."); return; }
     cont.innerHTML = "";
@@ -846,8 +840,8 @@ function vLotes() {
     <button class="tab ${tab === "revisar" ? "activo" : ""}" data-lotes-tab="revisar">Lotes por revisar (${lotes.filter(l => l.saldo < 0).length})</button></div>
   ${tab === "revisar" ? `<p class="aviso rojo">Lotes con salidas registradas pero sin entrada o saldo inicial suficiente.</p>` : `<p class="aviso">Ordenado por insumo y <b>en orden de uso</b>: el N° 1 es el lote que debe salir primero (FIFO). Los agotados van al final de cada insumo. Las entradas bloqueadas por Calidad no aparecen hasta ser aprobadas.</p>`}
   <div class="filtros"><input id="f-lotes" placeholder="Buscar código, insumo o lote…" value="${esc(filtros.lotes || "")}"></div>
-  <section class="card">${tabla([{ t: "Insumo" }, { t: "Orden de uso", cl: "num" }, { t: "Lote" }, { t: "Fecha entrada" }, ...(AJUSTES_PLANTA.fechasLote ? [{ t: "Vence" }] : []), { t: "Saldo", cl: "num" }, { t: "Prioridad FIFO" }, { t: "Entradas", cl: "num" }, { t: "Salidas", cl: "num" }, { t: "Control" }],
-    filas.map(l => { const nuevo = l.codigo !== previo; previo = l.codigo; return `<tr class="${cls(l.prioridad)} ${nuevo ? "fila-grupo" : ""}"><td class="txt">${nuevo ? `<b>${esc(l.insumo)}</b><br><small class="muted">${l.codigo}</small>` : ""}</td><td class="num fuerte">${l.orden ? l.orden + "°" : "—"}</td><td>${esc(l.lote)}</td><td>${fmtF(l.fecha)}</td>${AJUSTES_PLANTA.fechasLote ? `<td>${l.vence ? fmtF(l.vence) : "—"}</td>` : ""}<td class="num fuerte">${fmtN(l.saldo)}</td><td>${chipPrioridad(l.prioridad)}</td><td class="num">${fmtN(l.entradas)}</td><td class="num">${fmtN(l.salidas)}</td><td>${esc(l.control)}</td></tr>`; }),
+  <section class="card">${tabla([{ t: "Insumo" }, { t: "Orden de uso", cl: "num" }, { t: "Lote" }, { t: "Fecha entrada" }, { t: "Vence" }, { t: "Saldo", cl: "num" }, { t: "Prioridad FIFO" }, { t: "Entradas", cl: "num" }, { t: "Salidas", cl: "num" }, { t: "Control" }],
+    filas.map(l => { const nuevo = l.codigo !== previo; previo = l.codigo; return `<tr class="${cls(l.prioridad)} ${nuevo ? "fila-grupo" : ""}"><td class="txt">${nuevo ? `<b>${esc(l.insumo)}</b><br><small class="muted">${l.codigo}</small>` : ""}</td><td class="num fuerte">${l.orden ? l.orden + "°" : "—"}</td><td>${esc(l.lote)}</td><td>${fmtF(l.fecha)}</td><td>${l.vence ? fmtF(l.vence) : "—"}</td><td class="num fuerte">${fmtN(l.saldo)}</td><td>${chipPrioridad(l.prioridad)}</td><td class="num">${fmtN(l.entradas)}</td><td class="num">${fmtN(l.salidas)}</td><td>${esc(l.control)}</td></tr>`; }),
     tab === "revisar" ? "No hay lotes por revisar 👍" : "Sin lotes")}</section>`;
 }
 
@@ -1058,8 +1052,8 @@ function exportar(tipo) {
   const R = D();
   const cal = r => r.origen === "saldo-inicial" ? "SALDO INICIAL" : `${r.calidad?.estado || ""}${r.calidad?.ticket ? " " + r.calidad.ticket : ""}`;
   const tablas = {
-    entradas: [["FECHA", "HORA", "BODEGA", "ORDEN DE COMPRA", "FACTURA", "PROVEEDOR", AJUSTES_PLANTA.remision.toUpperCase(), "CODIGO", "INSUMO", "CANTIDAD", "UNIDAD", "LOTE", ...(AJUSTES_PLANTA.fechasLote ? ["FECHA FABRICACION", "FECHA VENCIMIENTO"] : []), "CALIDAD", "RECIBIDO POR", "OBSERVACIONES"],
-      ...R.recepciones.map(r => [r.fecha, r.hora || "", nomBodega(r.bodega), r.ordenCompra, r.factura, r.proveedor, r.remision, r.codigo, desc(r.codigo), r.cantidad, r.unidad, r.lote, ...(AJUSTES_PLANTA.fechasLote ? [r.fechaFabricacion || "", r.fechaVencimiento || ""] : []), cal(r), r.recibidoPor, r.observaciones])],
+    entradas: [["FECHA", "HORA", "BODEGA", "ORDEN DE COMPRA", "FACTURA", "PROVEEDOR", "REMISION", "CODIGO", "INSUMO", "CANTIDAD", "UNIDAD", "LOTE", "FECHA FABRICACION", "FECHA VENCIMIENTO", "CALIDAD", "RECIBIDO POR", "OBSERVACIONES"],
+      ...R.recepciones.map(r => [r.fecha, r.hora || "", nomBodega(r.bodega), r.ordenCompra, r.factura, r.proveedor, r.remision, r.codigo, desc(r.codigo), r.cantidad, r.unidad, r.lote, r.fechaFabricacion || "", r.fechaVencimiento || "", cal(r), r.recibidoPor, r.observaciones])],
     salidas: [["FECHA", "HORA", "ORDEN DE PRODUCCION", "DESTINO", "CODIGO", "INSUMO", "CANTIDAD", "UNIDAD", "LOTE", "ENTREGADO POR", "ESTADO", "RECIBIDO POR", "FIRMO", "FIRMA", "OBSERVACIONES"],
       ...R.salidas.map(s => [s.fecha, s.hora || "", s.ordenProduccion, s.destino, s.codigo, desc(s.codigo), s.cantidad, s.unidad, s.lote, s.entregadoPor, s.recibido?.estado, s.recibidoPor, s.recibido?.firmadoPor || "", s.recibido?.firma ? "SI" : "NO", s.observaciones])],
     devoluciones: [["FECHA", "HORA", "OP", "CODIGO", "INSUMO", "LOTE", "BUENAS", "MALAS", "MOTIVO", "REGISTRADO POR", "OBSERVACIONES"],
@@ -1068,8 +1062,8 @@ function exportar(tipo) {
       ...R.averias.map(a => [a.fecha, a.hora || "", a.tipo, a.estado, a.op, a.lote, a.codigo, desc(a.codigo), a.cantidad, a.observaciones])],
     inventario: [["TIPO", "CODIGO", "DESCRIPCION", "KITS", "STOCK INICIAL", "ENTRADAS", "DEVOLUCIONES", "SALIDAS", "STOCK ACTUAL", "EN CALIDAD", "UNIDAD", "FECHA ULT. ENTRADA", "FECHA ULT. SALIDA"],
       ...calcInventario().map(i => [i.tipo === "PT" ? "PRODUCTO TERMINADO" : "INSUMO", i.codigo, i.descripcion, i.kits.join(" "), i.stockInicial, i.entradas, i.devueltas, i.salidas, i.stock, i.enCalidad, i.unidad, i.ultE, i.ultS])],
-    lotes: [["CODIGO", "INSUMO", "ORDEN DE USO", "LOTE", "FECHA PRIMERA ENTRADA", ...(AJUSTES_PLANTA.fechasLote ? ["VENCE"] : []), "ENTRADAS", "SALIDAS", "SALDO", "PRIORIDAD FIFO", "CONTROL"],
-      ...lotesEnOrdenDeUso(calcLotes()).map(l => [l.codigo, l.insumo, l.orden, l.lote, l.fecha, ...(AJUSTES_PLANTA.fechasLote ? [l.vence] : []), l.entradas, l.salidas, l.saldo, l.prioridad, l.control])],
+    lotes: [["CODIGO", "INSUMO", "ORDEN DE USO", "LOTE", "FECHA PRIMERA ENTRADA", "VENCE", "ENTRADAS", "SALIDAS", "SALDO", "PRIORIDAD FIFO", "CONTROL"],
+      ...lotesEnOrdenDeUso(calcLotes()).map(l => [l.codigo, l.insumo, l.orden, l.lote, l.fecha, l.vence, l.entradas, l.salidas, l.saldo, l.prioridad, l.control])],
     kits: [["KIT", "TIPO", "CODIGO", "DESCRIPCION", "CONSUMO POR KIT", "REGLA", "COMUN A LOS 3"], ...R.kits.flatMap(k => [
       ...k.insumos.map(x => [k.kit, "INSUMO", x.codigo, x.descripcion, x.factor, x.regla, kitsDe(x.codigo).length === 3 ? "SI" : "NO"]),
       ...R.maestro.filter(m => m.tipo === "PT" && (m.kitsPT || []).includes(nombreKit(k).corto)).map(m => [k.kit, "PRODUCTO TERMINADO", m.codigo, m.descripcion, "", "", ""])])],
