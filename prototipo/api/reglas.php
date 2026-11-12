@@ -96,7 +96,9 @@ function validar_nuevo(Contexto $cx, string $tabla, array $f): ?string {
       if (!in_array($f['bodega'], $cx->bodegas(), true)) return 'Bodega no válida para esta planta.';
       if (!isset($cx->insumos[texto($f['codigo'])])) return 'El insumo no existe en el catálogo.';
       if (!entero_pos($f['cantidad'] ?? null)) return 'La cantidad debe ser un número entero mayor a 0.';
-      if ($e = validar_fechas_lote($f['fechaFabricacion'] ?? '', $f['fechaVencimiento'] ?? '')) return $e;
+      /* TQ Devoluciones no registra fechas de lote (pedido 2026-11-11): solo se validan si vienen */
+      $pide_fechas = $cx->planta !== 'PRUEBA' || isset($f['fechaFabricacion']) || isset($f['fechaVencimiento']);
+      if ($pide_fechas && ($e = validar_fechas_lote($f['fechaFabricacion'] ?? '', $f['fechaVencimiento'] ?? ''))) return $e;
       if (!mismo_usuario($f['recibidoPor'] ?? '', $u)) return 'El registro debe quedar a nombre de quien lo guarda.';
       $cal = $f['calidad'] ?? [];
       if (!in_array([$cal['requiere'] ?? '', $cal['estado'] ?? ''], [['Sí', 'Pendiente'], ['No', 'No aplica']], true)) return 'Estado de calidad no válido para una entrada nueva.';
