@@ -10,18 +10,13 @@ const CLAVES_COMUNES = ['1234', '12345', '123456', '1234567', '12345678', '0000'
 function accesos_bd(PDO $pdo): void {
   static $listo = false;
   if ($listo) return;
-  try { $pdo->query('SELECT 1 FROM accesos LIMIT 1'); }
-  catch (Throwable $e) {
-    $pdo->exec('CREATE TABLE IF NOT EXISTS accesos (
-      usuario VARCHAR(60) NOT NULL PRIMARY KEY,
-      fallos INT NOT NULL DEFAULT 0,
-      ultimo_fallo DATETIME NULL,
-      bloqueado_hasta DATETIME NULL,
-      ultimo_ok DATETIME NULL,
-      clave_debil TINYINT NULL
-    ) DEFAULT CHARSET=utf8mb4');
-  }
+  if (!tabla_existe($pdo, 'accesos')) $pdo->exec(sql_tabla_accesos());
   $listo = true;
+}
+
+function sql_tabla_accesos(): string {
+  $fh = sql_fecha_hora();
+  return "CREATE TABLE IF NOT EXISTS accesos (usuario VARCHAR(60) NOT NULL PRIMARY KEY, fallos INT NOT NULL DEFAULT 0, ultimo_fallo $fh NULL, bloqueado_hasta $fh NULL, ultimo_ok $fh NULL, clave_debil " . sql_entero_corto() . ' NULL)' . sql_fin_tabla();
 }
 
 /* Contraseña débil: menos de 8 caracteres, sin letras o sin números, muy común o igual al usuario */
@@ -33,7 +28,8 @@ function clave_debil(string $clave, string $usuario): bool {
 /* Minutos de bloqueo que le quedan al usuario (0 si puede intentar) */
 function minutos_bloqueo(PDO $pdo, string $usuario): int {
   accesos_bd($pdo);
-  $st = $pdo->prepare('SELECT TIMESTAMPDIFF(SECOND, NOW(), bloqueado_hasta) FROM accesos WHERE usuario = ? AND bloqueado_hasta > NOW()');
+  $seg = es_pg() ? 'EXTRACT(EPOCH FROM (bloqueado_hasta - LOCALTIMESTAMP))' : 'TIMESTAMPDIFF(SECOND, NOW(), bloqueado_hasta)';
+  $st = $pdo->prepare("SELECT $seg FROM accesos WHERE usuario = ? AND bloqueado_hasta > " . sql_ahora());
   $st->execute([$usuario]);
   $s = $st->fetchColumn();
   return $s === false ? 0 : max(1, (int)ceil($s / 60));
@@ -42,13 +38,17 @@ function minutos_bloqueo(PDO $pdo, string $usuario): int {
 /* Registra un fallo; devuelve [intentos que quedan, minutos de bloqueo si se acaba de bloquear] */
 function registrar_fallo(PDO $pdo, string $usuario): array {
   accesos_bd($pdo);
-  $pdo->prepare('INSERT INTO accesos (usuario, fallos, ultimo_fallo) VALUES (?, 1, NOW())
-    ON DUPLICATE KEY UPDATE fallos = IF(ultimo_fallo IS NULL OR ultimo_fallo < NOW() - INTERVAL ' . VENTANA_MIN . ' MINUTE, 1, fallos + 1), ultimo_fallo = NOW()')->execute([$usuario]);
+  /* Si el último fallo fue hace más de la ventana, el conteo vuelve a empezar */
+  $st = $pdo->prepare('SELECT CASE WHEN ultimo_fallo IS NULL OR ultimo_fallo < ' . sql_mas_minutos(-VENTANA_MIN) . ' THEN 1 ELSE fallos + 1 END FROM accesos WHERE usuario = ?');
+  $st->execute([$usuario]);
+  $nuevos = $st->fetchColumn();
+  $pdo->prepare(sql_upsert('accesos', ['usuario', 'fallos'], 'usuario'))->execute([$usuario, $nuevos === false ? 1 : (int)$nuevos]);
+  $pdo->prepare('UPDATE accesos SET ultimo_fallo = ' . sql_ahora() . ' WHERE usuario = ?')->execute([$usuario]);
   $st = $pdo->prepare('SELECT fallos FROM accesos WHERE usuario = ?');
   $st->execute([$usuario]);
   $fallos = (int)$st->fetchColumn();
   if ($fallos >= MAX_FALLOS) {
-    $pdo->prepare('UPDATE accesos SET bloqueado_hasta = NOW() + INTERVAL ' . BLOQUEO_MIN . ' MINUTE, fallos = 0 WHERE usuario = ?')->execute([$usuario]);
+    $pdo->prepare('UPDATE accesos SET bloqueado_hasta = ' . sql_mas_minutos(BLOQUEO_MIN) . ', fallos = 0 WHERE usuario = ?')->execute([$usuario]);
     error_log("Trazza: usuario bloqueado por intentos fallidos: $usuario");
     return [0, BLOQUEO_MIN];
   }
@@ -57,15 +57,15 @@ function registrar_fallo(PDO $pdo, string $usuario): array {
 
 function registrar_ingreso(PDO $pdo, string $usuario, bool $debil): void {
   accesos_bd($pdo);
-  $pdo->prepare('INSERT INTO accesos (usuario, fallos, ultimo_ok, clave_debil) VALUES (?, 0, NOW(), ?)
-    ON DUPLICATE KEY UPDATE fallos = 0, bloqueado_hasta = NULL, ultimo_ok = NOW(), clave_debil = VALUES(clave_debil)')->execute([$usuario, $debil ? 1 : 0]);
+  $pdo->prepare(sql_upsert('accesos', ['usuario', 'fallos', 'clave_debil'], 'usuario'))->execute([$usuario, 0, $debil ? 1 : 0]);
+  $pdo->prepare('UPDATE accesos SET bloqueado_hasta = NULL, ultimo_ok = ' . sql_ahora() . ' WHERE usuario = ?')->execute([$usuario]);
 }
 
 /* Al cambiar la contraseña desde el panel: se desbloquea y se recalcula si es débil */
 function clave_cambiada(PDO $pdo, string $usuario, string $clave): void {
   accesos_bd($pdo);
-  $pdo->prepare('INSERT INTO accesos (usuario, fallos, clave_debil) VALUES (?, 0, ?)
-    ON DUPLICATE KEY UPDATE fallos = 0, bloqueado_hasta = NULL, clave_debil = VALUES(clave_debil)')->execute([$usuario, clave_debil($clave, $usuario) ? 1 : 0]);
+  $pdo->prepare(sql_upsert('accesos', ['usuario', 'fallos', 'clave_debil'], 'usuario'))->execute([$usuario, 0, clave_debil($clave, $usuario) ? 1 : 0]);
+  $pdo->prepare('UPDATE accesos SET bloqueado_hasta = NULL WHERE usuario = ?')->execute([$usuario]);
 }
 
 function desbloquear(PDO $pdo, string $usuario): void {
@@ -79,14 +79,16 @@ function desbloquear(PDO $pdo, string $usuario): void {
 function estado_accesos(PDO $pdo, array $usuarios): array {
   accesos_bd($pdo);
   $out = [];
-  foreach ($pdo->query('SELECT usuario, clave_debil, IF(bloqueado_hasta > NOW(), DATE_FORMAT(bloqueado_hasta, "%H:%i"), NULL) AS hasta FROM accesos') as $f)
+  $hasta = es_pg() ? "to_char(bloqueado_hasta, 'HH24:MI')" : "DATE_FORMAT(bloqueado_hasta, '%H:%i')";
+  foreach ($pdo->query('SELECT usuario, clave_debil, CASE WHEN bloqueado_hasta > ' . sql_ahora() . " THEN $hasta END AS hasta FROM accesos") as $f)
     $out[$f['usuario']] = ['debil' => $f['clave_debil'] === null ? null : (int)$f['clave_debil'] === 1, 'bloqueado' => $f['hasta']];
   $limite = microtime(true) + 2.0;
   foreach ($usuarios as $u) {
     if (($out[$u['usuario']]['debil'] ?? null) !== null) continue;
     if (microtime(true) > $limite) break;
     $debil = password_verify('1234', $u['clave_hash']);
-    $pdo->prepare('INSERT INTO accesos (usuario, clave_debil) VALUES (?, ?) ON DUPLICATE KEY UPDATE clave_debil = IFNULL(clave_debil, VALUES(clave_debil))')->execute([$u['usuario'], $debil ? 1 : 0]);
+    $pdo->prepare(sql_upsert('accesos', ['usuario', 'clave_debil'], 'usuario', []))->execute([$u['usuario'], $debil ? 1 : 0]); /* si ya existe, no se toca */
+    $pdo->prepare('UPDATE accesos SET clave_debil = ? WHERE usuario = ? AND clave_debil IS NULL')->execute([$debil ? 1 : 0, $u['usuario']]);
     $out[$u['usuario']] = ['debil' => $debil, 'bloqueado' => $out[$u['usuario']]['bloqueado'] ?? null];
   }
   return $out;

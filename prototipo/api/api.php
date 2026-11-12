@@ -100,10 +100,8 @@ try {
     case 'ids': {
       [, $rol, $planta] = exigir_sesion();
       if (empty(ESCRIBE[$rol])) responder(['sig' => 0, 'fin' => 0]);
-      /* El hosting usa MyISAM (sin transacciones): LAST_INSERT_ID hace la reserva en una sola operación atómica */
-      $pdo = bd();
-      $pdo->prepare('UPDATE secuencias SET valor = LAST_INSERT_ID(valor + 30) WHERE planta = ?')->execute([$planta]);
-      $sig = (int)$pdo->query('SELECT LAST_INSERT_ID()')->fetchColumn() - 30;
+      /* Reserva atómica de 30 consecutivos (ver sumar_secuencia en bd.php) */
+      $sig = sumar_secuencia(bd(), 'valor', 30, $planta) - 30;
       responder(['sig' => $sig, 'fin' => $sig + 30]);
     }
     case 'guardar': {
@@ -121,8 +119,7 @@ try {
         if (isset($c['fila'])) escribir_fila($pdo, $planta, $c['tabla'], $c['fila']);
         else $pdo->prepare('DELETE FROM ' . nombre_tabla($planta, $c['tabla']) . ' WHERE id = ?')->execute([$c['id']]);
       }
-      $pdo->prepare('UPDATE secuencias SET version = LAST_INSERT_ID(version + 1) WHERE planta = ?')->execute([$planta]);
-      $version = (int)$pdo->query('SELECT LAST_INSERT_ID()')->fetchColumn();
+      $version = sumar_secuencia($pdo, 'version', 1, $planta);
       $pdo->commit();
       responder(['version' => $version]);
     }
@@ -131,6 +128,14 @@ try {
       /* Copia completa de la base en SQL (todas las plantas, usuarios con contraseña cifrada). Se restaura con Importar en phpMyAdmin. */
       exigir_admin();
       $pdo = bd();
+      if (es_pg()) {
+        error_log("Trazza: respaldo descargado por {$_SESSION['usuario']}");
+        header('Content-Type: application/sql; charset=utf-8');
+        header('Cache-Control: no-store');
+        header('Content-Disposition: attachment; filename="trazza-respaldo-pg-' . (new DateTime('now', new DateTimeZone('America/Bogota')))->format('Y-m-d_Hi') . '.sql"');
+        respaldo_pg($pdo);
+        exit;
+      }
       $base = $pdo->query('SELECT DATABASE()')->fetchColumn();
       $tablas = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
       error_log("Trazza: respaldo descargado por {$_SESSION['usuario']}");
@@ -201,8 +206,8 @@ try {
       while (isset(plantas_bd()[$id]) || in_array('pl' . strtolower($id), $prefijos, true)) $id = substr($base, 0, 12) . $n++;
       $prefijo = 'pl' . strtolower($id);
       foreach (sql_tablas_planta($prefijo) as $sql) $pdo->exec($sql);
-      $pdo->prepare('INSERT IGNORE INTO secuencias (planta, valor, version) VALUES (?,1,1)')->execute([$id]);
-      $pdo->prepare('INSERT INTO plantas (id, nombre, prefijo, modulos, activa, creada) VALUES (?,?,?,?,1,NOW())')->execute([$id, $nombre, $prefijo, json_encode($modulos)]);
+      $pdo->prepare(sql_upsert('secuencias', ['planta', 'valor', 'version'], 'planta', []))->execute([$id, 1, 1]);
+      $pdo->prepare('INSERT INTO plantas (id, nombre, prefijo, modulos, activa, creada) VALUES (?,?,?,?,1,' . sql_ahora() . ')')->execute([$id, $nombre, $prefijo, json_encode($modulos)]);
       plantas_bd(true);
       $ins = $pdo->prepare('INSERT INTO usuarios (usuario, nombre, rol, planta, clave_hash, activo) VALUES (?,?,?,?,?,1)');
       foreach ($usuarios as $x) { $ins->execute([$x['usuario'], $x['nombre'], $x['rol'], $id, password_hash($x['clave'], PASSWORD_BCRYPT)]); clave_cambiada($pdo, $x['usuario'], $x['clave']); }

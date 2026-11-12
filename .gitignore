@@ -14,6 +14,8 @@ publicar/
 respaldos/
 pruebas/resultados_api.json
 pruebas/respaldo_prueba.sql
+pruebas/resultados_motores.json
+pruebas/respaldo_*.sql
 
 # Sistema
 .DS_Store
