@@ -26,6 +26,8 @@ const PUEDE = {
   firmarSalidas: ES.supervisor,      // "Recibido por" + firma dibujada
   aprobarCalidad: ES.calidad,        // tickets de calidad
   editarCatalogos: ES.supervisor,    // tablas de insumos y proveedores
+  editarUbicaciones: ES.auxiliar,    // lista de ubicaciones de la bodega
+  moverUbicacion: ES.auxiliar || ES.supervisor, // traslados entre ubicaciones
 };
 const BODEGAS = PLANTA === "PRUEBA" ? ["KT", "TQ"] : ["Bodega"];
 const NOMBRE_BODEGA = { KT: "Bodega KT", TQ: "Bodega TKT" };
@@ -47,7 +49,7 @@ async function api(accion, cuerpo) {
 /* Filas de la app tal como van a SQL: insumos y maestro son una sola tabla */
 function filasBD() {
   const d = D(), m = Object.fromEntries(d.maestro.map(x => [x.codigo, x]));
-  return { recepciones: d.recepciones, salidas: d.salidas, devoluciones: d.devoluciones, averias: d.averias, proveedores: d.proveedores,
+  return { recepciones: d.recepciones, salidas: d.salidas, devoluciones: d.devoluciones, averias: d.averias, proveedores: d.proveedores, ubicaciones: d.ubicaciones, traslados: d.traslados,
     insumos: d.insumos.map(i => ({ ...m[i.codigo], ...i })), solicitudes: [...BD.solicitudes].reverse(), bitacora: [...BD.bitacora].reverse() }; // en la app van del más nuevo al más viejo
 }
 const instantanea = () => Object.fromEntries(Object.entries(filasBD()).map(([t, filas]) => [t, Object.fromEntries(filas.map(f => [f.id, JSON.stringify(f)]))]));
@@ -58,7 +60,7 @@ const moduloActivo = k => !MODULOS_PLANTA || MODULOS_FIJOS.includes(k) || MODULO
 function aplicarDatos(r) {
   if (r.planta) { const antes = JSON.stringify(MODULOS_PLANTA); MODULOS_PLANTA = r.planta.modulos || []; if (antes !== JSON.stringify(MODULOS_PLANTA) && $("#nav").innerHTML) pintarMenu(); }
   const maestro = r.datos.insumos.map(({ codigo, descripcion, tipo, unidad, kitsPT }) => ({ codigo, descripcion, tipo, unidad, kitsPT }));
-  BD = { datos: { ...r.datos, maestro }, solicitudes: r.solicitudes, bitacora: r.bitacora };
+  BD = { datos: { ubicaciones: [], traslados: [], ...r.datos, maestro }, solicitudes: r.solicitudes, bitacora: r.bitacora };
   BASE = instantanea(); VERSION = r.version;
 }
 /* Envía a SQL solo las filas que cambiaron; si falla, avisa y vuelve a lo que hay guardado */
@@ -202,6 +204,36 @@ function lotesEnOrdenDeUso(lotes) {
   return orden;
 }
 
+/* ---------- Ubicaciones dentro de la bodega ---------- */
+const UBIC_ON = () => moduloActivo("ubicaciones");
+const SIN_UBIC = "Sin ubicación";
+const nomUbic = u => u || SIN_UBIC;
+/* Cantidad por insumo + lote + ubicación: entradas disponibles + devoluciones buenas − salidas ± traslados ('' = sin ubicación) */
+function calcUbicaciones() {
+  const m = new Map(), k = (c, l, u) => `${c}|${U(l)}|${U(u)}`;
+  const sumar = (cod, lote, ubic, cant) => {
+    if (!cod || String(lote ?? "").trim() === "") return;
+    const key = k(cod, lote, ubic), f = m.get(key) || { codigo: cod, lote: String(lote).trim(), ubicacion: String(ubic || "").trim(), cantidad: 0 };
+    f.cantidad += Number(cant || 0); m.set(key, f);
+  };
+  const { recepciones, salidas, devoluciones, traslados } = D();
+  recepciones.filter(disponible).forEach(r => sumar(r.codigo, r.lote, r.ubicacion, r.cantidad));
+  devoluciones.filter(x => Number(x.buenas) > 0 && U(x.lote) !== "N/A").forEach(x => sumar(x.codigo, x.lote, x.ubicacion, x.buenas));
+  salidas.filter(x => U(x.lote) !== "N/A").forEach(x => sumar(x.codigo, x.lote, x.ubicacion, -Number(x.cantidad || 0)));
+  traslados.forEach(t => { sumar(t.codigo, t.lote, t.origen, -Number(t.cantidad)); sumar(t.codigo, t.lote, t.destino, Number(t.cantidad)); });
+  return [...m.values()].filter(f => Math.abs(f.cantidad) > 1e-9);
+}
+/* Reparte la cantidad de un lote entre sus ubicaciones (primero las que tienen nombre, al final "sin ubicación") */
+function repartirUbicaciones(cod, lote, cantidad, ubicSaldo) {
+  const lugares = ubicSaldo.filter(x => x.codigo === cod && U(x.lote) === U(lote) && x.cantidad > 0).sort((a, b) => (a.ubicacion === "") - (b.ubicacion === "") || a.ubicacion.localeCompare(b.ubicacion));
+  const out = []; let resta = cantidad;
+  for (const l of lugares) { if (resta <= 0) break; const toma = Math.min(resta, l.cantidad); out.push({ ubicacion: l.ubicacion, cantidad: toma }); l.cantidad -= toma; resta -= toma; }
+  if (resta > 0) out.push({ ubicacion: "", cantidad: resta });
+  return out;
+}
+const lugaresDeLote = (cod, lote, ubic = calcUbicaciones()) => ubic.filter(x => x.codigo === cod && U(x.lote) === U(lote) && x.cantidad > 0);
+const ubicacionesDe = bodega => D().ubicaciones.filter(u => !bodega || u.bodega === bodega).map(u => u.nombre).sort((a, b) => a.localeCompare(b));
+
 /* Reparte una cantidad entre los lotes disponibles en orden de uso: CLB primero, luego FIFO (puede usar 2 o más lotes) */
 function repartirFIFO(cod, cantidad, saldos) {
   const lotes = saldos.filter(l => l.codigo === cod && l.saldo > 0).sort(ordenFIFO);
@@ -335,6 +367,7 @@ const VISTAS = {
   averias: { titulo: "Averías", render: () => vModulo("averias"), roles: AUX_SUP_PRO, ico: "⚠", menu: "Averías", sec: "Registros", badge: "averias" },
   inventario: { titulo: "Inventario", render: () => vInventario(), roles: AUX_SUP_PRO, ico: "▤", menu: "Inventario", sec: "Consultar" },
   lotes: { titulo: "Control de lotes FIFO · orden de uso", render: () => vLotes(), roles: AUX_SUP_PRO, ico: "◷", menu: "Control lotes FIFO", sec: "Consultar" },
+  ubicaciones: { titulo: "Ubicaciones y traslados", render: () => vUbicaciones(), roles: AUX_SUP_PRO, ico: "⌖", menu: "Ubicaciones", sec: "Consultar" },
   kits: { titulo: "Códigos y composición de kits", render: () => vKits(), roles: AUX_SUP_PRO, ico: "◫", menu: "Códigos kits", sec: "Consultar" },
   historial: { titulo: "Historial de movimientos", render: () => vHistorial(), roles: SUP_PRO, ico: "≡", menu: "Historial movimientos", sec: "Consultar" },
   calidad: { titulo: "Calidad · tickets de revisión", render: () => vCalidad(), roles: ["Calidad", "Supervisor", "Progreso"], ico: "✔", menu: ES.calidad ? "Tickets de calidad" : "Calidad", sec: "Control", badge: "calidad" },
@@ -383,6 +416,7 @@ function formEntrada() {
         <div class="campo"><label for="e-cant">Cantidad recibida <span class="req">*</span></label><input type="number" id="e-cant" min="1" step="1" placeholder="0"><span class="ayuda">Número entero mayor a 0</span></div>
         <div class="campo"><label for="e-und">Unidad</label><input id="e-und" readonly placeholder="Según el insumo"></div>
         <div class="campo"><label for="e-lote">Lote <span class="req">*</span></label><input id="e-lote" placeholder="Ej: TKT0346024 o N/A"></div>
+        ${UBIC_ON() ? `<div class="campo"><label for="e-ubic">Ubicación <span class="req">*</span></label><select id="e-ubic">${opciones(ubicacionesDe(BODEGAS.length === 1 ? BODEGAS[0] : "").map(u => [u, u]), "", BODEGAS.length === 1 ? "Selecciona…" : "Primero la bodega…")}</select><span class="ayuda">¿No está? Agrégala en Ubicaciones.</span></div>` : ""}
         <div class="campo"><label for="e-fab">Fecha de fabricación <span class="req">*</span></label><input type="date" id="e-fab" max="${ahora().fecha}">${checkNA("e-fab")}</div>
         <div class="campo"><label for="e-venc">Fecha de vencimiento <span class="req">*</span></label><input type="date" id="e-venc"><span class="ayuda">Debe ser posterior a la de fabricación</span>${checkNA("e-venc")}</div>
         ${moduloActivo("calidad") ? `<div class="campo"><label for="e-calidad">¿Requiere revisión de calidad? <span class="req">*</span></label><select id="e-calidad">${opciones([["No", "No"], ["Sí", "Sí · crear ticket para Calidad"]], "No")}</select>
@@ -395,8 +429,8 @@ function formEntrada() {
     </form>`;
 }
 function tablaRecepciones(filas) {
-  return tabla([{ t: "Fecha" }, { t: "Bodega" }, { t: "OC" }, { t: "Facturas" }, { t: "Proveedor" }, { t: "Remisión" }, { t: "Insumo" }, { t: "Cantidad", cl: "num" }, { t: "Und" }, { t: "Lote" }, { t: "Fabricación" }, { t: "Vencimiento" }, { t: "Calidad" }, { t: "Recibido por" }, { t: "Obs." }, { t: "" }],
-    filas.map(r => `<tr><td>${fFecha(r)}</td><td>${esc(r.bodega ? nomBodega(r.bodega) : "—")}</td><td>${esc(r.ordenCompra)}</td><td>${esc(r.factura || "—")}</td><td>${esc(r.proveedor)}</td><td>${esc(r.remision)}</td><td class="txt">${esc(insumoTxt(r.codigo))}</td><td class="num fuerte">${fmtN(r.cantidad)}</td><td>${esc(r.unidad)}</td><td>${esc(r.lote)}</td><td>${r.fechaFabricacion ? fmtF(r.fechaFabricacion) : "—"}</td><td>${r.fechaVencimiento ? fmtF(r.fechaVencimiento) : "—"}</td>
+  return tabla([{ t: "Fecha" }, { t: "Bodega" }, { t: "OC" }, { t: "Facturas" }, { t: "Proveedor" }, { t: "Remisión" }, { t: "Insumo" }, { t: "Cantidad", cl: "num" }, { t: "Und" }, { t: "Lote" }, ...(UBIC_ON() ? [{ t: "Ubicación" }] : []), { t: "Fabricación" }, { t: "Vencimiento" }, { t: "Calidad" }, { t: "Recibido por" }, { t: "Obs." }, { t: "" }],
+    filas.map(r => `<tr><td>${fFecha(r)}</td><td>${esc(r.bodega ? nomBodega(r.bodega) : "—")}</td><td>${esc(r.ordenCompra)}</td><td>${esc(r.factura || "—")}</td><td>${esc(r.proveedor)}</td><td>${esc(r.remision)}</td><td class="txt">${esc(insumoTxt(r.codigo))}</td><td class="num fuerte">${fmtN(r.cantidad)}</td><td>${esc(r.unidad)}</td><td>${esc(r.lote)}</td>${UBIC_ON() ? `<td>${esc(nomUbic(r.ubicacion))}</td>` : ""}<td>${r.fechaFabricacion ? fmtF(r.fechaFabricacion) : "—"}</td><td>${r.fechaVencimiento ? fmtF(r.fechaVencimiento) : "—"}</td>
       <td>${r.origen === "saldo-inicial" ? `<span class="chip-e e-info">Saldo inicial</span>` : `<span class="chip-e ${ESTADO_CAL_CHIP[r.calidad?.estado] || "e-gris"}" title="${esc(r.calidad?.ticket || "")}">${esc(r.calidad?.estado || "No aplica")}${r.calidad?.ticket ? " · " + esc(r.calidad.ticket) : ""}</span>`}</td>
       <td>${esc(r.recibidoPor)}</td><td>${esc(r.observaciones)}</td><td>${btnEditar("recepciones", r.id)}</td></tr>`));
 }
@@ -406,6 +440,7 @@ function initEntradas() {
     $("#e-und").value = m?.unidad || i?.unidad || "";
     $("#e-info").innerHTML = i ? `Stock actual: <b>${fmtN(i.stock)} ${esc(i.unidad)}</b>` : "";
   });
+  $("#e-bodega").addEventListener("change", e => { if ($("#e-ubic")) $("#e-ubic").innerHTML = opciones(ubicacionesDe(e.target.value).map(u => [u, u]), "", "Selecciona…"); });
   $("#e-calidad").addEventListener("change", e => {
     $("#e-cal-ayuda").textContent = e.target.value === "Sí" ? "Se crea un ticket para Calidad. El material queda BLOQUEADO hasta que Calidad lo apruebe." : "El material queda disponible de una vez.";
   });
@@ -414,7 +449,7 @@ function initEntradas() {
     e.preventDefault();
     const err = $("#e-error"); err.hidden = true;
     $$(".campo", e.target).forEach(c => c.classList.remove("invalido"));
-    const req = ["e-bodega", "e-oc", "e-factura", "e-prov", "e-rem", "e-insumo", "e-cant", "e-lote", "e-fab", "e-venc"].filter(id => !$("#" + id).value.trim() && !$(`#${id}-na`)?.checked);
+    const req = ["e-bodega", "e-oc", "e-factura", "e-prov", "e-rem", "e-insumo", "e-cant", "e-lote", "e-fab", "e-venc", ...(UBIC_ON() ? ["e-ubic"] : [])].filter(id => !$("#" + id).value.trim() && !$(`#${id}-na`)?.checked);
     const cant = Number($("#e-cant").value);
     if (!req.includes("e-cant") && (!Number.isInteger(cant) || cant <= 0)) req.push("e-cant");
     if (req.length) { req.forEach(id => $("#" + id).closest(".campo").classList.add("invalido")); err.textContent = "Revisa los campos marcados en rojo (obligatorios; la cantidad debe ser un entero mayor a 0)."; err.hidden = false; return; }
@@ -426,9 +461,9 @@ function initEntradas() {
     const id = nuevoId("R");
     const ticket = requiere ? nuevoId("CAL-") : "";
     D().recepciones.push({ id, origen: "compra", ...ahora(), bodega: v("e-bodega"), ordenCompra: v("e-oc"), factura: v("e-factura"), proveedor: v("e-prov"), remision: v("e-rem"), codigo: v("e-insumo"), cantidad: cant,
-      unidad: v("e-und"), lote: U(v("e-lote")), fechaFabricacion: fab, fechaVencimiento: venc, recibidoPor: SESION.usuario, observaciones: v("e-obs"),
+      unidad: v("e-und"), lote: U(v("e-lote")), fechaFabricacion: fab, fechaVencimiento: venc, recibidoPor: SESION.usuario, observaciones: v("e-obs"), ...(UBIC_ON() ? { ubicacion: v("e-ubic") } : {}),
       calidad: requiere ? { requiere: "Sí", estado: "Pendiente", ticket, creado: new Date().toISOString() } : { requiere: "No", estado: "No aplica" } });
-    registrarBitacora("Entrada registrada", "Entrada", id, `${insumoTxt(v("e-insumo"))} · +${cant} · lote ${U(v("e-lote"))} · vence ${fmtF(venc)} · ${nomBodega(v("e-bodega"))} · factura ${v("e-factura")}${requiere ? ` · ticket ${ticket} para Calidad` : ""}`);
+    registrarBitacora("Entrada registrada", "Entrada", id, `${insumoTxt(v("e-insumo"))} · +${cant} · lote ${U(v("e-lote"))} · vence ${fmtF(venc)} · ${nomBodega(v("e-bodega"))}${UBIC_ON() ? ` · ubicación ${v("e-ubic")}` : ""} · factura ${v("e-factura")}${requiere ? ` · ticket ${ticket} para Calidad` : ""}`);
     guardar(); toast(requiere ? `Entrada guardada. Ticket ${ticket} enviado a Calidad (material bloqueado).` : `Entrada guardada: +${fmtN(cant)} ${desc(v("e-insumo"))}`);
     cerrarModal(); actualizarBadges(); render();
   });
@@ -461,25 +496,27 @@ function formSalida() {
 const chipRecibido = s => s.recibido?.estado === "Pendiente" ? `<span class="chip-e e-alerta">⏳ Por firmar</span>`
   : `${esc(s.recibidoPor || s.recibido?.por || "")}${s.recibido?.firma ? ` <button class="btn-lapiz" data-ver-firma="${esc(s.id)}" title="Ver firma">✍</button>` : ""}`;
 function tablaSalidas(filas) {
-  return tabla([{ t: "Fecha" }, { t: "OP" }, { t: "Destino" }, { t: "Insumo" }, { t: "Cantidad", cl: "num" }, { t: "Und" }, { t: "Lote" }, { t: "Entregó" }, { t: "Recibió" }, { t: "Obs." }, { t: "" }],
-    filas.map(s => `<tr><td>${fFecha(s)}</td><td>${esc(s.ordenProduccion)}</td><td>${esc(s.destino)}</td><td class="txt">${esc(insumoTxt(s.codigo))}</td><td class="num fuerte">${fmtN(s.cantidad)}</td><td>${esc(s.unidad)}</td><td>${esc(s.lote)}</td><td>${esc(s.entregadoPor)}</td><td>${chipRecibido(s)}</td><td>${esc(s.observaciones)}</td><td>${btnEditar("salidas", s.id)}</td></tr>`));
+  return tabla([{ t: "Fecha" }, { t: "OP" }, { t: "Destino" }, { t: "Insumo" }, { t: "Cantidad", cl: "num" }, { t: "Und" }, { t: "Lote" }, ...(UBIC_ON() ? [{ t: "Ubicación" }] : []), { t: "Entregó" }, { t: "Recibió" }, { t: "Obs." }, { t: "" }],
+    filas.map(s => `<tr><td>${fFecha(s)}</td><td>${esc(s.ordenProduccion)}</td><td>${esc(s.destino)}</td><td class="txt">${esc(insumoTxt(s.codigo))}</td><td class="num fuerte">${fmtN(s.cantidad)}</td><td>${esc(s.unidad)}</td><td>${esc(s.lote)}</td>${UBIC_ON() ? `<td>${esc(nomUbic(s.ubicacion))}</td>` : ""}<td>${esc(s.entregadoPor)}</td><td>${chipRecibido(s)}</td><td>${esc(s.observaciones)}</td><td>${btnEditar("salidas", s.id)}</td></tr>`));
 }
 function initSalidas() {
-  const inv = calcInventario(), lotes = calcLotes();
+  const inv = calcInventario(), lotes = calcLotes(), ubicTodas = UBIC_ON() ? calcUbicaciones() : [];
   const cont = $("#lineas");
   /* Reparte todas las líneas en orden, descontando de los saldos lo que ya tomó la línea anterior */
   const repartirTodo = () => {
-    const saldos = lotes.map(l => ({ ...l }));
+    const saldos = lotes.map(l => ({ ...l })), ubicSaldo = ubicTodas.map(x => ({ ...x }));
     $$(".linea", cont).forEach(div => {
       const cod = $(".l-insumo", div).value, c = Number($(".l-cant", div).value || 0), info = $(".info", div);
       if (!cod) { info.innerHTML = ""; div._partes = []; return; }
       const i = inv.find(x => x.codigo === cod);
       const partes = c > 0 ? repartirFIFO(cod, c, saldos) : [];
       partes.forEach(p => { const l = saldos.find(x => x.codigo === cod && U(x.lote) === U(p.lote)); if (l) l.saldo -= p.cantidad; });
-      div._partes = partes;
-      const lotesTxt = partes.map(p => p.falta
+      /* Con ubicaciones: cada parte del lote se divide según dónde está guardado */
+      const finales = !UBIC_ON() ? partes : partes.flatMap(p => p.falta ? [{ ...p, ubicacion: "" }] : repartirUbicaciones(cod, p.lote, p.cantidad, ubicSaldo).map(u => ({ ...p, cantidad: u.cantidad, ubicacion: u.ubicacion })));
+      div._partes = finales;
+      const lotesTxt = finales.map(p => p.falta
         ? `<span class="chip-e e-peligro">Sin lote disponible: ${fmtN(p.cantidad)}</span>`
-        : `<span class="chip-e e-ok">Lote ${esc(p.lote)}: ${fmtN(p.cantidad)} de ${fmtN(p.saldo)}</span>`).join(" ");
+        : `<span class="chip-e e-ok">Lote ${esc(p.lote)}: ${fmtN(p.cantidad)}${UBIC_ON() ? ` · 📍 ${esc(nomUbic(p.ubicacion))}` : ` de ${fmtN(p.saldo)}`}</span>`).join(" ");
       info.innerHTML = `Stock actual: <b>${fmtN(i?.stock ?? 0)} ${esc(i?.unidad || "")}</b>${c > (i?.stock ?? 0) ? ` <span class="chip-e e-peligro">Supera el stock</span>` : ""}${partes.length ? `<br>Se toma de: ${lotesTxt}` : ""}`;
     });
   };
@@ -527,9 +564,9 @@ function initSalidas() {
     lineas.forEach(l => l.partes.forEach(p => {
       const id = nuevoId("S");
       D().salidas.push({ id, ...ahora(), ordenProduccion: v("s-op"), destino: U(v("s-dest")), codigo: l.cod, cantidad: p.cantidad, unidad: (inv.find(i => i.codigo === l.cod) || {}).unidad || "",
-        lote: p.lote, entregadoPor: SESION.usuario, recibidoPor: "", recibido: { estado: "Pendiente", por: "", fecha: "" }, observaciones: l.obs });
+        lote: p.lote, ...(UBIC_ON() && !p.falta ? { ubicacion: p.ubicacion || "" } : {}), entregadoPor: SESION.usuario, recibidoPor: "", recibido: { estado: "Pendiente", por: "", fecha: "" }, observaciones: l.obs });
       registros++;
-      registrarBitacora("Salida registrada", "Salida", id, `OP ${v("s-op")} · ${insumoTxt(l.cod)} · −${p.cantidad} · lote ${p.lote}`);
+      registrarBitacora("Salida registrada", "Salida", id, `OP ${v("s-op")} · ${insumoTxt(l.cod)} · −${p.cantidad} · lote ${p.lote}${UBIC_ON() && !p.falta ? ` · desde ${nomUbic(p.ubicacion)}` : ""}`);
     }));
     guardar(); toast(`Salida guardada: OP ${v("s-op")} · ${registros} registro(s) por lote. Pendiente de recibir.`); cerrarModal(); actualizarBadges(); render();
   });
@@ -599,6 +636,7 @@ function formDevolucion() {
         <div class="campo"><label for="d-op">Orden de producción <span class="req">*</span></label><select id="d-op">${opciones(ops.map(o => [o, "OP " + o]), "", "Selecciona la OP…")}</select></div>
         <div class="campo ancho"><label for="d-sal">Insumo y lote que salió con esa OP <span class="req">*</span></label><select id="d-sal" disabled><option value="">Primero elige la OP…</option></select><span class="ayuda" id="d-info"></span></div>
         <div class="campo"><label for="d-buenas">Unidades buenas (sobrante)</label><input type="number" id="d-buenas" min="0" step="1" value="0"><span class="ayuda">Vuelven al inventario</span></div>
+        ${UBIC_ON() ? `<div class="campo"><label for="d-ubic">Ubicación donde quedan las buenas</label><select id="d-ubic">${opciones(ubicacionesDe("").map(u => [u, u]), "", "Selecciona…")}</select><span class="ayuda">Obligatoria si hay unidades buenas</span></div>` : ""}
         <div class="campo"><label for="d-malas">Unidades malas (rechazo)</label><input type="number" id="d-malas" min="0" step="1" value="0"><span class="ayuda">Pasan a averías</span></div>
         <div class="campo"><label for="d-por">Registrado por</label><input id="d-por" value="${esc(SESION.usuario)}" readonly></div>
         <div class="campo ancho"><label for="d-obs">Observaciones</label><input id="d-obs" placeholder="Ej: Sobrante de la OP, material en buen estado"></div>
@@ -636,6 +674,7 @@ function initDevolucion() {
     if (!selSal.value) malos.push("d-sal");
     if (!Number.isInteger(buenas) || buenas < 0) malos.push("d-buenas");
     if (!Number.isInteger(malas) || malas < 0) malos.push("d-malas");
+    if (UBIC_ON() && buenas > 0 && !$("#d-ubic").value) malos.push("d-ubic");
     if (malos.length) { malos.forEach(id => $("#" + id).closest(".campo").classList.add("invalido")); err.textContent = "Revisa los campos marcados en rojo."; err.hidden = false; return; }
     if (buenas + malas <= 0) { err.textContent = "Escribe cuántas unidades devolvieron (buenas, malas o ambas)."; err.hidden = false; return; }
     const [cod, lote] = selSal.value.split("|");
@@ -643,8 +682,8 @@ function initDevolucion() {
     if (buenas + malas > d.max) { err.textContent = `No puedes devolver más de lo que salió: máximo ${fmtN(d.max)} unidades para este lote y OP.`; err.hidden = false; return; }
     const id = nuevoId("DV"), obs = $("#d-obs").value.trim();
     const motivo = malas > 0 && buenas > 0 ? "Sobrante y rechazo" : malas > 0 ? "Rechazo" : "Sobrante";
-    D().devoluciones.push({ id, ...ahora(), op: selOp.value, codigo: cod, lote, buenas, malas, motivo, registradoPor: SESION.usuario, observaciones: obs });
-    registrarBitacora("Devolución registrada", "Devolución", id, `OP ${selOp.value} · ${insumoTxt(cod)} · lote ${lote} · buenas ${buenas} · malas ${malas}`);
+    D().devoluciones.push({ id, ...ahora(), op: selOp.value, codigo: cod, lote, buenas, malas, motivo, ...(UBIC_ON() && buenas > 0 ? { ubicacion: $("#d-ubic").value } : {}), registradoPor: SESION.usuario, observaciones: obs });
+    registrarBitacora("Devolución registrada", "Devolución", id, `OP ${selOp.value} · ${insumoTxt(cod)} · lote ${lote} · buenas ${buenas}${UBIC_ON() && buenas > 0 ? ` → ${$("#d-ubic").value}` : ""} · malas ${malas}`);
     if (malas > 0) {
       const aid = nuevoId("A");
       D().averias.push({ id: aid, ...ahora(), tipo: "Rechazo", estado: "Pendiente de completar", codigo: cod, lote, op: selOp.value, cantidad: malas, devolucion: id, registradoPor: SESION.usuario, observaciones: "" });
@@ -829,6 +868,8 @@ function vInventario() {
 
 /* ---------- Control de lotes FIFO (en orden de uso) ---------- */
 function vLotes() {
+  const ubicLotes = UBIC_ON() ? calcUbicaciones() : [];
+  const lugaresTxt = l => l.saldo <= 0 ? "—" : lugaresDeLote(l.codigo, l.lote, ubicLotes).map(x => `<span class="chip-e ${x.ubicacion ? "e-info" : "e-gris"}">📍 ${esc(nomUbic(x.ubicacion))}: ${fmtN(x.cantidad)}</span>`).join(" ") || "—";
   const lotes = calcLotes(), tab = filtros.lotesTab || "control", q = U(filtros.lotes || "");
   setAcciones(btnCsv("lotes", "⤓ Exportar CSV"));
   const base = tab === "control" ? lotes.filter(l => l.saldo >= 0) : lotes.filter(l => l.saldo < 0);
@@ -840,9 +881,105 @@ function vLotes() {
     <button class="tab ${tab === "revisar" ? "activo" : ""}" data-lotes-tab="revisar">Lotes por revisar (${lotes.filter(l => l.saldo < 0).length})</button></div>
   ${tab === "revisar" ? `<p class="aviso rojo">Lotes con salidas registradas pero sin entrada o saldo inicial suficiente.</p>` : `<p class="aviso">Ordenado por insumo y <b>en orden de uso</b>: el N° 1 es el lote que debe salir primero (FIFO). Los agotados van al final de cada insumo. Las entradas bloqueadas por Calidad no aparecen hasta ser aprobadas.</p>`}
   <div class="filtros"><input id="f-lotes" placeholder="Buscar código, insumo o lote…" value="${esc(filtros.lotes || "")}"></div>
-  <section class="card">${tabla([{ t: "Insumo" }, { t: "Orden de uso", cl: "num" }, { t: "Lote" }, { t: "Fecha entrada" }, { t: "Vence" }, { t: "Saldo", cl: "num" }, { t: "Prioridad FIFO" }, { t: "Entradas", cl: "num" }, { t: "Salidas", cl: "num" }, { t: "Control" }],
-    filas.map(l => { const nuevo = l.codigo !== previo; previo = l.codigo; return `<tr class="${cls(l.prioridad)} ${nuevo ? "fila-grupo" : ""}"><td class="txt">${nuevo ? `<b>${esc(l.insumo)}</b><br><small class="muted">${l.codigo}</small>` : ""}</td><td class="num fuerte">${l.orden ? l.orden + "°" : "—"}</td><td>${esc(l.lote)}</td><td>${fmtF(l.fecha)}</td><td>${l.vence ? fmtF(l.vence) : "—"}</td><td class="num fuerte">${fmtN(l.saldo)}</td><td>${chipPrioridad(l.prioridad)}</td><td class="num">${fmtN(l.entradas)}</td><td class="num">${fmtN(l.salidas)}</td><td>${esc(l.control)}</td></tr>`; }),
+  <section class="card">${tabla([{ t: "Insumo" }, { t: "Orden de uso", cl: "num" }, { t: "Lote" }, { t: "Fecha entrada" }, { t: "Vence" }, { t: "Saldo", cl: "num" }, ...(UBIC_ON() ? [{ t: "Ubicación" }] : []), { t: "Prioridad FIFO" }, { t: "Entradas", cl: "num" }, { t: "Salidas", cl: "num" }, { t: "Control" }],
+    filas.map(l => { const nuevo = l.codigo !== previo; previo = l.codigo; return `<tr class="${cls(l.prioridad)} ${nuevo ? "fila-grupo" : ""}"><td class="txt">${nuevo ? `<b>${esc(l.insumo)}</b><br><small class="muted">${l.codigo}</small>` : ""}</td><td class="num fuerte">${l.orden ? l.orden + "°" : "—"}</td><td>${esc(l.lote)}</td><td>${fmtF(l.fecha)}</td><td>${l.vence ? fmtF(l.vence) : "—"}</td><td class="num fuerte">${fmtN(l.saldo)}</td>${UBIC_ON() ? `<td class="txt">${lugaresTxt(l)}</td>` : ""}<td>${chipPrioridad(l.prioridad)}</td><td class="num">${fmtN(l.entradas)}</td><td class="num">${fmtN(l.salidas)}</td><td>${esc(l.control)}</td></tr>`; }),
     tab === "revisar" ? "No hay lotes por revisar 👍" : "Sin lotes")}</section>`;
+}
+
+/* ---------- Ubicaciones: dónde está cada insumo, lista de ubicaciones y traslados ---------- */
+function vUbicaciones() {
+  const tab = filtros.ubTab || "donde", q = U(filtros.ub || "");
+  const ubic = calcUbicaciones();
+  setAcciones(PUEDE.moverUbicacion ? `<button class="btn btn-primario" data-mover>⇄ Mover de ubicación</button>` : "");
+  const tabs = `<div class="tabs">${[["donde", "Dónde está cada insumo"], ["lista", `Lista de ubicaciones (${D().ubicaciones.length})`], ["mov", `Traslados (${D().traslados.length})`]].map(([k, t]) => `<button class="tab ${tab === k ? "activo" : ""}" data-ub-tab="${k}">${t}</button>`).join("")}</div>`;
+  if (tab === "lista") {
+    const ed = PUEDE.editarUbicaciones;
+    const total = n => ubic.filter(x => U(x.ubicacion) === U(n)).reduce((a, x) => a + x.cantidad, 0);
+    return `${tabs}<p class="aviso">${ed ? "Agrega aquí las ubicaciones de la bodega (estante, nivel, posición…). Aparecen en entradas, devoluciones y traslados. Solo se puede eliminar una ubicación vacía." : "Solo lectura. La lista de ubicaciones la administra el auxiliar."}</p>
+      ${ed ? `<section class="card"><h2>Agregar ubicación</h2><form id="form-ubic" class="form-grid" novalidate>
+        <div class="campo ancho"><label for="ub-nom">Nombre <span class="req">*</span></label><input id="ub-nom" placeholder="Ej: ESTANTE A - NIVEL 2"></div>
+        <div class="campo"><label for="ub-bod">Bodega <span class="req">*</span></label><select id="ub-bod">${opciones(BODEGAS.map(b => [b, nomBodega(b)]), BODEGAS[0])}</select></div>
+        <div class="campo" style="align-self:end"><button class="btn btn-primario">+ Agregar ubicación</button></div></form></section>` : ""}
+      <section class="card">${tabla([{ t: "Ubicación" }, { t: "Bodega" }, { t: "Insumos guardados", cl: "num" }, { t: "Creada por" }, ...(ed ? [{ t: "" }] : [])],
+        [...D().ubicaciones].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(u => { const t = total(u.nombre); return `<tr><td class="fuerte">${esc(u.nombre)}</td><td>${esc(nomBodega(u.bodega))}</td><td class="num">${fmtN(t)}</td><td>${esc(u.creadoPor)}</td>${ed ? `<td>${Math.abs(t) > 0 ? `<small class="muted">Con insumos</small>` : `<button class="btn btn-borde btn-mini btn-eliminar" data-ub-borrar="${esc(u.id)}">Eliminar</button>`}</td>` : ""}</tr>`; }),
+        "Todavía no hay ubicaciones")}</section>`;
+  }
+  if (tab === "mov") return `${tabs}<section class="card">${tabla([{ t: "Fecha" }, { t: "Insumo" }, { t: "Lote" }, { t: "Cantidad", cl: "num" }, { t: "De" }, { t: "A" }, { t: "Movió" }, { t: "Obs." }],
+    [...D().traslados].reverse().map(t => `<tr><td>${fFecha(t)}</td><td class="txt">${esc(insumoTxt(t.codigo))}</td><td>${esc(t.lote)}</td><td class="num fuerte">${fmtN(t.cantidad)}</td><td>${esc(nomUbic(t.origen))}</td><td class="fuerte">${esc(t.destino)}</td><td>${esc(t.movidoPor)}</td><td>${esc(t.observaciones)}</td></tr>`), "Sin traslados")}</section>`;
+  const filas = ubic.filter(x => x.cantidad > 0 && (!q || U(`${x.codigo} ${desc(x.codigo)} ${x.lote} ${nomUbic(x.ubicacion)}`).includes(q)))
+    .sort((a, b) => (a.ubicacion === "") - (b.ubicacion === "") || a.ubicacion.localeCompare(b.ubicacion) || desc(a.codigo).localeCompare(desc(b.codigo)));
+  const sinUb = ubic.filter(x => x.cantidad > 0 && !x.ubicacion).length;
+  return `${tabs}${sinUb ? `<p class="aviso">${sinUb} lote(s) con saldo todavía no tienen ubicación (lo registrado antes de activar ubicaciones). ${PUEDE.moverUbicacion ? "Usa «Mover de ubicación» para asignarles una." : ""}</p>` : ""}
+    <div class="filtros"><input id="f-ub" placeholder="Buscar insumo, lote o ubicación…" value="${esc(filtros.ub || "")}"></div>
+    <section class="card">${tabla([{ t: "Ubicación" }, { t: "Insumo" }, { t: "Lote" }, { t: "Cantidad", cl: "num" }, ...(PUEDE.moverUbicacion ? [{ t: "" }] : [])],
+      filas.map(x => `<tr><td>${x.ubicacion ? `<b>${esc(x.ubicacion)}</b>` : `<span class="chip-e e-gris">${SIN_UBIC}</span>`}</td><td class="txt">${esc(insumoTxt(x.codigo))}</td><td>${esc(x.lote)}</td><td class="num fuerte">${fmtN(x.cantidad)}</td>${PUEDE.moverUbicacion ? `<td><button class="btn btn-borde btn-mini" data-mover="${esc(x.codigo + "|" + x.lote + "|" + x.ubicacion)}">⇄ Mover</button></td>` : ""}</tr>`),
+      "No hay insumos con saldo")}</section>`;
+}
+function initUbicaciones() {
+  $("#form-ubic")?.addEventListener("submit", e => {
+    e.preventDefault();
+    const nom = U($("#ub-nom").value).replace(/\s+/g, " ");
+    if (!nom) { toast("Escribe el nombre de la ubicación."); return; }
+    if (D().ubicaciones.some(u => U(u.nombre) === nom)) { toast("Esa ubicación ya existe."); return; }
+    const id = nuevoId("UB");
+    D().ubicaciones.push({ id, nombre: nom, bodega: $("#ub-bod").value, creadoPor: SESION.usuario });
+    registrarBitacora("Ubicación agregada", "Ubicaciones", id, `${nom} · ${nomBodega($("#ub-bod").value)}`);
+    guardar(); render(); toast("Ubicación agregada. Ya aparece en entradas, devoluciones y traslados.");
+  });
+}
+function eliminarUbicacion(id) {
+  if (!PUEDE.editarUbicaciones) return;
+  const u = D().ubicaciones.find(x => x.id === id);
+  if (!u) return;
+  if (calcUbicaciones().some(x => U(x.ubicacion) === U(u.nombre) && Math.abs(x.cantidad) > 0)) { toast("Esa ubicación todavía tiene insumos: muévelos antes de eliminarla."); return; }
+  if (!confirm(`¿Eliminar la ubicación ${u.nombre}?`)) return;
+  D().ubicaciones.splice(D().ubicaciones.indexOf(u), 1);
+  registrarBitacora("Ubicación eliminada", "Ubicaciones", id, u.nombre);
+  guardar(); render(); toast("Ubicación eliminada.");
+}
+function abrirMover(pre = "") {
+  if (!PUEDE.moverUbicacion) return;
+  const ubic = calcUbicaciones().filter(x => x.cantidad > 0);
+  const [pc, pl, pu] = pre ? pre.split("|") : [];
+  const cods = [...new Set(ubic.map(x => x.codigo))].sort((a, b) => desc(a).localeCompare(desc(b)));
+  abrirModal("Mover de ubicación", `<p class="sub">Cambia de lugar todo o parte de un lote. Queda en el historial quién lo movió, de dónde y a dónde.</p>
+    <form id="form-mover" novalidate><div class="form-grid">
+      ${campoFecha("m-fecha")}
+      <div class="campo ancho"><label for="m-ins">Insumo <span class="req">*</span></label><select id="m-ins">${opciones(cods.map(c => [c, insumoTxt(c)]), pc || "", "Selecciona…")}</select></div>
+      <div class="campo ancho"><label for="m-desde">Lote y ubicación actual <span class="req">*</span></label><select id="m-desde"><option value="">Primero el insumo…</option></select></div>
+      <div class="campo"><label for="m-cant">Cantidad a mover <span class="req">*</span></label><input type="number" id="m-cant" min="1" step="1"><span class="ayuda" id="m-info"></span></div>
+      <div class="campo"><label for="m-a">Nueva ubicación <span class="req">*</span></label><select id="m-a">${opciones(ubicacionesDe("").map(u => [u, u]), "", "Selecciona…")}</select></div>
+      <div class="campo"><label>Movido por</label><input value="${esc(SESION.usuario)}" readonly></div>
+      <div class="campo ancho"><label for="m-obs">Observaciones</label><input id="m-obs" placeholder="Ej: Reorganización del estante A"></div>
+    </div><p class="aviso rojo" id="m-error" hidden></p>
+    <div class="acciones-form"><button type="button" class="btn btn-borde" data-cerrar>Cancelar</button><button class="btn btn-primario">Mover</button></div></form>`, { formulario: true });
+  const llenarDesde = (sel = "") => {
+    const op = ubic.filter(x => x.codigo === $("#m-ins").value);
+    $("#m-desde").innerHTML = opciones(op.map(x => [`${x.lote}|${x.ubicacion}`, `Lote ${x.lote} · ${nomUbic(x.ubicacion)} · ${fmtN(x.cantidad)}`]), sel, op.length ? "Selecciona…" : "Sin saldo");
+    elegirDesde();
+  };
+  const elegirDesde = () => {
+    const [lote, ub] = ($("#m-desde").value || "|").split("|"), x = ubic.find(y => y.codigo === $("#m-ins").value && U(y.lote) === U(lote) && U(y.ubicacion) === U(ub));
+    $("#m-info").textContent = x ? `Hay ${fmtN(x.cantidad)}` : ""; if (x) $("#m-cant").value = x.cantidad;
+  };
+  $("#m-ins").addEventListener("change", () => llenarDesde());
+  $("#m-desde").addEventListener("change", elegirDesde);
+  if (pc) llenarDesde(`${pl}|${pu}`);
+  $("#form-mover").addEventListener("submit", e => {
+    e.preventDefault();
+    const err = $("#m-error"); err.hidden = true;
+    $$(".campo", e.target).forEach(c => c.classList.remove("invalido"));
+    const [lote, origen] = ($("#m-desde").value || "|").split("|"), cant = Number($("#m-cant").value), destino = $("#m-a").value, cod = $("#m-ins").value;
+    const x = ubic.find(y => y.codigo === cod && U(y.lote) === U(lote) && U(y.ubicacion) === U(origen));
+    const malos = [!cod && "m-ins", !x && "m-desde", !(Number.isInteger(cant) && cant > 0) && "m-cant", !destino && "m-a"].filter(Boolean);
+    if (malos.length) { malos.forEach(id => $("#" + id).closest(".campo").classList.add("invalido")); err.textContent = "Revisa los campos marcados en rojo (la cantidad debe ser un entero mayor a 0)."; err.hidden = false; return; }
+    if (cant > x.cantidad) { err.textContent = `En ${nomUbic(origen)} solo hay ${fmtN(x.cantidad)} de ese lote.`; err.hidden = false; return; }
+    if (U(destino) === U(origen)) { err.textContent = "La nueva ubicación debe ser distinta a la actual."; err.hidden = false; return; }
+    const id = nuevoId("TR");
+    D().traslados.push({ id, ...ahora(), codigo: cod, lote: x.lote, cantidad: cant, origen: x.ubicacion, destino, movidoPor: SESION.usuario, observaciones: $("#m-obs").value.trim() });
+    registrarBitacora("Insumo movido de ubicación", "Traslado", id, `${insumoTxt(cod)} · lote ${x.lote} · ${fmtN(cant)} · ${nomUbic(x.ubicacion)} → ${destino}`);
+    guardar(); cerrarModal(); render(); toast(`Movido: ${fmtN(cant)} de ${desc(cod)} a ${destino}.`);
+  });
 }
 
 /* ---------- Códigos kits ---------- */
@@ -1052,10 +1189,10 @@ function exportar(tipo) {
   const R = D();
   const cal = r => r.origen === "saldo-inicial" ? "SALDO INICIAL" : `${r.calidad?.estado || ""}${r.calidad?.ticket ? " " + r.calidad.ticket : ""}`;
   const tablas = {
-    entradas: [["FECHA", "HORA", "BODEGA", "ORDEN DE COMPRA", "FACTURA", "PROVEEDOR", "REMISION", "CODIGO", "INSUMO", "CANTIDAD", "UNIDAD", "LOTE", "FECHA FABRICACION", "FECHA VENCIMIENTO", "CALIDAD", "RECIBIDO POR", "OBSERVACIONES"],
-      ...R.recepciones.map(r => [r.fecha, r.hora || "", nomBodega(r.bodega), r.ordenCompra, r.factura, r.proveedor, r.remision, r.codigo, desc(r.codigo), r.cantidad, r.unidad, r.lote, r.fechaFabricacion || "", r.fechaVencimiento || "", cal(r), r.recibidoPor, r.observaciones])],
-    salidas: [["FECHA", "HORA", "ORDEN DE PRODUCCION", "DESTINO", "CODIGO", "INSUMO", "CANTIDAD", "UNIDAD", "LOTE", "ENTREGADO POR", "ESTADO", "RECIBIDO POR", "FIRMO", "FIRMA", "OBSERVACIONES"],
-      ...R.salidas.map(s => [s.fecha, s.hora || "", s.ordenProduccion, s.destino, s.codigo, desc(s.codigo), s.cantidad, s.unidad, s.lote, s.entregadoPor, s.recibido?.estado, s.recibidoPor, s.recibido?.firmadoPor || "", s.recibido?.firma ? "SI" : "NO", s.observaciones])],
+    entradas: [["FECHA", "HORA", "BODEGA", "ORDEN DE COMPRA", "FACTURA", "PROVEEDOR", "REMISION", "CODIGO", "INSUMO", "CANTIDAD", "UNIDAD", "LOTE", "FECHA FABRICACION", "FECHA VENCIMIENTO", "CALIDAD", "RECIBIDO POR", "OBSERVACIONES", "UBICACION"],
+      ...R.recepciones.map(r => [r.fecha, r.hora || "", nomBodega(r.bodega), r.ordenCompra, r.factura, r.proveedor, r.remision, r.codigo, desc(r.codigo), r.cantidad, r.unidad, r.lote, r.fechaFabricacion || "", r.fechaVencimiento || "", cal(r), r.recibidoPor, r.observaciones, r.ubicacion || ""])],
+    salidas: [["FECHA", "HORA", "ORDEN DE PRODUCCION", "DESTINO", "CODIGO", "INSUMO", "CANTIDAD", "UNIDAD", "LOTE", "ENTREGADO POR", "ESTADO", "RECIBIDO POR", "FIRMO", "FIRMA", "OBSERVACIONES", "UBICACION"],
+      ...R.salidas.map(s => [s.fecha, s.hora || "", s.ordenProduccion, s.destino, s.codigo, desc(s.codigo), s.cantidad, s.unidad, s.lote, s.entregadoPor, s.recibido?.estado, s.recibidoPor, s.recibido?.firmadoPor || "", s.recibido?.firma ? "SI" : "NO", s.observaciones, s.ubicacion || ""])],
     devoluciones: [["FECHA", "HORA", "OP", "CODIGO", "INSUMO", "LOTE", "BUENAS", "MALAS", "MOTIVO", "REGISTRADO POR", "OBSERVACIONES"],
       ...R.devoluciones.map(x => [x.fecha, x.hora || "", x.op, x.codigo, desc(x.codigo), x.lote, x.buenas, x.malas, x.motivo, x.registradoPor, x.observaciones])],
     averias: [["FECHA", "HORA", "TIPO", "ESTADO", "OP", "LOTE", "CODIGO", "INSUMO", "CANTIDAD", "OBSERVACIONES"],
@@ -1114,6 +1251,7 @@ function render() {
   $$("#nav a").forEach(a => a.classList.toggle("activo", a.getAttribute("href") === "#" + clave));
   $("#vista").innerHTML = v.render();
   if (clave.startsWith("cat-") && PUEDE.editarCatalogos) initCatalogos();
+  if (clave === "ubicaciones") initUbicaciones();
   $("#menu").classList.remove("abierto");
   actualizarBadges();
 }
@@ -1139,10 +1277,13 @@ document.addEventListener("click", e => {
   else if (d.catBorrar) eliminarCatalogo(d.catBorrar, d.id);
   else if (d.csv) exportar(d.csv);
   else if (d.lotesTab) { filtros.lotesTab = d.lotesTab; render(); }
+  else if (d.ubTab) { filtros.ubTab = d.ubTab; render(); }
+  else if (d.ubBorrar) eliminarUbicacion(d.ubBorrar);
+  else if ("mover" in d) abrirMover(d.mover);
   else if (d.solEst) { filtros.solEst = d.solEst; render(); }
 });
 document.addEventListener("input", e => {
-  const map = { "f-inv": "inv", "f-lotes": "lotes", "f-h": "h", "f-bit": "bit" };
+  const map = { "f-inv": "inv", "f-lotes": "lotes", "f-h": "h", "f-bit": "bit", "f-ub": "ub" };
   if (map[e.target.id]) { filtros[map[e.target.id]] = e.target.value; const pos = e.target.selectionStart; render(); const el = $("#" + e.target.id); el.focus(); el.setSelectionRange(pos, pos); }
 });
 document.addEventListener("change", e => {

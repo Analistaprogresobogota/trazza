@@ -6,7 +6,8 @@ const PLANTAS = ['PRUEBA' => 'tq', 'PROGRESO' => 'progreso'];
 const NOMBRES_INICIALES = ['PRUEBA' => 'Planta TQ Devoluciones', 'PROGRESO' => 'Planta Progreso'];
 /* Módulos que se pueden activar o quitar por planta (los demás son fijos: inicio, inventario, insumos, proveedores, solicitudes, bitácora) */
 const MODULOS = ['entradas' => 'Entradas', 'salidas' => 'Salidas', 'devoluciones' => 'Devoluciones', 'averias' => 'Averías',
-  'lotes' => 'Control lotes FIFO', 'kits' => 'Códigos kits', 'historial' => 'Historial de movimientos', 'calidad' => 'Calidad'];
+  'lotes' => 'Control lotes FIFO', 'kits' => 'Códigos kits', 'historial' => 'Historial de movimientos', 'calidad' => 'Calidad',
+  'ubicaciones' => 'Ubicaciones y traslados'];
 const ROLES_PLANTA = ['Supervisor', 'Auxiliar', 'Calidad'];
 const TIPOS_SQL = ['T' => 'VARCHAR(190)', 'L' => 'TEXT', 'M' => 'MEDIUMTEXT', 'N' => 'DECIMAL(18,4)', 'F' => 'DATE', 'H' => 'VARCHAR(8)', 'I' => 'VARCHAR(40)'];
 /* En PostgreSQL: TEXT reemplaza a MEDIUMTEXT y NUMERIC a DECIMAL (mismos valores) */
@@ -46,6 +47,11 @@ const TABLAS = [
     'baseFechaEntrada' => ['base_fecha_entrada', 'F'], 'baseFechaSalida' => ['base_fecha_salida', 'F'], 'observaciones' => ['observaciones', 'L']]],
   'proveedores' => ['sql' => 'proveedores', 'campos' => ['id' => ['id', 'I'], 'nombre' => ['nombre', 'T'], 'nit' => ['nit', 'I'], 'contacto' => ['contacto', 'T']]],
   'kits' => ['sql' => 'kits', 'campos' => ['id' => ['id', 'T'], 'kit' => ['kit', 'T']]],
+  /* Ubicaciones dentro de la bodega (las administra el auxiliar) y traslados de insumos entre ubicaciones */
+  'ubicaciones' => ['sql' => 'ubicaciones', 'campos' => ['id' => ['id', 'I'], 'nombre' => ['nombre', 'T'], 'bodega' => ['bodega', 'I'], 'creadoPor' => ['creado_por', 'T']]],
+  'traslados' => ['sql' => 'traslados', 'campos' => [
+    'id' => ['id', 'I'], 'fecha' => ['fecha', 'F'], 'hora' => ['hora', 'H'], 'codigo' => ['codigo', 'I'], 'lote' => ['lote', 'T'], 'cantidad' => ['cantidad', 'N'],
+    'origen' => ['origen', 'T'], 'destino' => ['destino', 'T'], 'movidoPor' => ['movido_por', 'T'], 'observaciones' => ['observaciones', 'L']]],
   'solicitudes' => ['sql' => 'solicitudes', 'campos' => [
     'id' => ['id', 'I'], 'fecha' => ['fecha', 'I'], 'usuario' => ['usuario', 'T'], 'tabla' => ['tabla', 'I'], 'registroId' => ['registro_id', 'I'], 'tipo' => ['tipo', 'I'],
     'motivo' => ['motivo', 'L'], 'resumen' => ['resumen', 'L'], 'estado' => ['estado', 'I'], 'resueltoPor' => ['resuelto_por', 'T'], 'fechaResolucion' => ['fecha_resolucion', 'I']]],
@@ -55,8 +61,8 @@ const TABLAS = [
 ];
 /* Qué tablas puede escribir cada rol (Progreso solo ve). Solo la supervisora elimina. */
 const ESCRIBE = [
-  'Auxiliar' => ['recepciones', 'salidas', 'devoluciones', 'averias', 'solicitudes', 'bitacora'],
-  'Supervisor' => ['recepciones', 'salidas', 'devoluciones', 'averias', 'insumos', 'proveedores', 'solicitudes', 'bitacora'],
+  'Auxiliar' => ['recepciones', 'salidas', 'devoluciones', 'averias', 'solicitudes', 'bitacora', 'ubicaciones', 'traslados'],
+  'Supervisor' => ['recepciones', 'salidas', 'devoluciones', 'averias', 'insumos', 'proveedores', 'solicitudes', 'bitacora', 'traslados'],
   'Calidad' => ['recepciones', 'bitacora'],
 ];
 /* Tabla "plantas": se crea sola la primera vez, con TQ Devoluciones y Progreso */
@@ -85,6 +91,17 @@ function nombre_tabla(string $planta, string $tabla): string {
   if (!$p) throw new RuntimeException("Planta desconocida: $planta");
   return $p['prefijo'] . '_' . TABLAS[$tabla]['sql'];
 }
+/* Plantas creadas antes de que existieran tablas nuevas (ubicaciones, traslados): se crean solas la primera vez que se usan.
+   CREATE TABLE IF NOT EXISTS no toca las tablas que ya existen ni sus datos. */
+function asegurar_tablas_planta(PDO $pdo, string $planta): void {
+  static $listas = [];
+  if (isset($listas[$planta])) return;
+  $pre = PLANTAS[$planta] ?? (plantas_bd()[$planta]['prefijo'] ?? null);
+  if (!$pre) return;
+  if (!tabla_existe($pdo, $pre . '_ubicaciones') || !tabla_existe($pdo, $pre . '_traslados')) foreach (sql_tablas_planta($pre) as $sql) $pdo->exec($sql);
+  $listas[$planta] = true;
+}
+function modulo_activo(string $planta, string $modulo): bool { return in_array($modulo, plantas_bd()[$planta]['modulos'] ?? [], true); }
 /* CREATE TABLE de todas las tablas de una planta */
 function sql_tablas_planta(string $prefijo): array {
   $out = [];

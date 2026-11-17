@@ -89,8 +89,9 @@ try {
     case 'datos': {
       [, , $planta] = exigir_sesion();
       $pdo = bd();
+      asegurar_tablas_planta($pdo, $planta);
       $datos = [];
-      foreach (['recepciones', 'salidas', 'devoluciones', 'averias', 'insumos', 'proveedores', 'kits'] as $t) $datos[$t] = leer_tabla($pdo, $planta, $t);
+      foreach (['recepciones', 'salidas', 'devoluciones', 'averias', 'insumos', 'proveedores', 'kits', 'ubicaciones', 'traslados'] as $t) $datos[$t] = leer_tabla($pdo, $planta, $t);
       $st = $pdo->prepare('SELECT version FROM secuencias WHERE planta = ?');
       $st->execute([$planta]);
       $p = plantas_bd()[$planta] ?? null;
@@ -109,6 +110,7 @@ try {
       $cambios = $cuerpo['cambios'] ?? [];
       if (!is_array($cambios) || count($cambios) > 500) responder(['error' => 'Solicitud no válida.'], 400);
       $pdo = bd();
+      asegurar_tablas_planta($pdo, $planta);
       /* Reglas de negocio y permisos por registro (api/reglas.php): todo el lote se revisa antes de escribir */
       if ($error = validar_cambios(new Contexto($pdo, $planta, $usuario, $rol), $cambios)) {
         error_log("Trazza: cambio rechazado ($planta/$usuario/$rol): " . ltrim($error, "!"));

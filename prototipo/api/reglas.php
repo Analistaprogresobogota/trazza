@@ -83,6 +83,33 @@ class Contexto {
     foreach ($pdo->query('SELECT codigo FROM ' . nombre_tabla($planta, 'insumos')) as $f) $this->insumos[(string)$f['codigo']] = true;
   }
   public function bodegas(): array { return $this->planta === 'PRUEBA' ? ['KT', 'TQ'] : ['Bodega']; }
+  public function ubicacionesOn(): bool { return modulo_activo($this->planta, 'ubicaciones'); }
+  /* Nombres de ubicaciones existentes (en la base y nuevas en este mismo guardado) */
+  public function ubicaciones(): array {
+    $out = [];
+    foreach (leer_tabla($this->pdo, $this->planta, 'ubicaciones') as $u) $out[mb_strtoupper(texto($u['nombre']))] = $u;
+    foreach ($this->pendientes as [$t, $x]) if ($t === 'ubicaciones') $out[mb_strtoupper(texto($x['nombre'] ?? ''))] = $x;
+    return $out;
+  }
+}
+/* Cantidad de un insumo y lote que hay en una ubicación ('' = sin ubicación), igual a como la calcula la app:
+   entradas disponibles + devoluciones buenas − salidas ± traslados. $lote null = todos los lotes y todos los insumos. */
+function stock_ubicacion(Contexto $cx, ?string $codigo, ?string $lote, string $ubic): float {
+  $igual = fn($a) => strcasecmp(trim((string)$a), trim($ubic)) === 0;
+  $mio = fn($x) => $codigo === null || (texto($x['codigo'] ?? '') === $codigo && strcasecmp(texto($x['lote'] ?? ''), (string)$lote) === 0);
+  $filas = fn($t) => array_merge(leer_tabla($cx->pdo, $cx->planta, $t), array_map(fn($p) => $p[1], array_filter($cx->pendientes, fn($p) => $p[0] === $t)));
+  $total = 0.0;
+  foreach ($filas('recepciones') as $r) if ($mio($r) && !in_array($r['calidad']['estado'] ?? '', ['Pendiente', 'Rechazado'], true) && $igual($r['ubicacion'] ?? '')) $total += (float)($r['cantidad'] ?? 0);
+  foreach ($filas('devoluciones') as $d) if ($mio($d) && $igual($d['ubicacion'] ?? '')) $total += (float)($d['buenas'] ?? 0);
+  foreach ($filas('salidas') as $s) if ($mio($s) && $igual($s['ubicacion'] ?? '')) $total -= (float)($s['cantidad'] ?? 0);
+  foreach ($filas('traslados') as $t) if ($mio($t)) { if ($igual($t['destino'] ?? '')) $total += (float)$t['cantidad']; if ($igual($t['origen'] ?? '')) $total -= (float)$t['cantidad']; }
+  return $total;
+}
+/* La ubicación debe existir en la lista de la planta */
+function validar_ubicacion(Contexto $cx, $nombre, bool $obligatoria): ?string {
+  $n = texto($nombre);
+  if ($n === '') return $obligatoria ? 'Falta: ubicación.' : null;
+  return isset($cx->ubicaciones()[mb_strtoupper($n)]) ? null : "La ubicación \"$n\" no existe en la lista de ubicaciones.";
 }
 
 /* Registro nuevo: datos completos y coherentes */
@@ -98,6 +125,7 @@ function validar_nuevo(Contexto $cx, string $tabla, array $f): ?string {
       if (!entero_pos($f['cantidad'] ?? null)) return 'La cantidad debe ser un número entero mayor a 0.';
       if ($e = validar_fechas_lote($f['fechaFabricacion'] ?? '', $f['fechaVencimiento'] ?? '')) return $e;
       if (!mismo_usuario($f['recibidoPor'] ?? '', $u)) return 'El registro debe quedar a nombre de quien lo guarda.';
+      if ($e = validar_ubicacion($cx, $f['ubicacion'] ?? '', $cx->ubicacionesOn())) return $e;
       $cal = $f['calidad'] ?? [];
       if (!in_array([$cal['requiere'] ?? '', $cal['estado'] ?? ''], [['Sí', 'Pendiente'], ['No', 'No aplica']], true)) return 'Estado de calidad no válido para una entrada nueva.';
       return fecha_registro($f['fecha'] ?? '');
@@ -129,6 +157,7 @@ function validar_nuevo(Contexto $cx, string $tabla, array $f): ?string {
       }
       if ($total > $salio - $devuelto + 1e-9) return 'No se puede devolver más de lo que salió para esa OP y lote.';
       if (!mismo_usuario($f['registradoPor'] ?? '', $u)) return 'El registro debe quedar a nombre de quien lo guarda.';
+      if ($e = validar_ubicacion($cx, $f['ubicacion'] ?? '', $cx->ubicacionesOn() && (float)$f['buenas'] > 0)) return $e;
       return fecha_registro($f['fecha'] ?? '');
     case 'averias':
       if ($cx->rol !== 'Auxiliar') return '!Solo el auxiliar registra averías.';
@@ -151,6 +180,23 @@ function validar_nuevo(Contexto $cx, string $tabla, array $f): ?string {
       return null;
     case 'proveedores':
       return obligatorios($f, ['nombre' => 'nombre del proveedor']);
+    case 'ubicaciones':
+      if ($cx->rol !== 'Auxiliar') return '!Solo el auxiliar administra la lista de ubicaciones.';
+      if ($e = obligatorios($f, ['nombre' => 'nombre de la ubicación', 'bodega' => 'bodega'])) return $e;
+      if (!in_array($f['bodega'], $cx->bodegas(), true)) return 'Bodega no válida para esta planta.';
+      if (isset($cx->ubicaciones()[mb_strtoupper(texto($f['nombre']))])) return 'Ya existe una ubicación con ese nombre.';
+      return mismo_usuario($f['creadoPor'] ?? '', $u) ? null : 'El registro debe quedar a nombre de quien lo guarda.';
+    case 'traslados':
+      if (!in_array($cx->rol, ['Auxiliar', 'Supervisor'], true)) return '!Tu rol no puede mover insumos de ubicación.';
+      if ($e = obligatorios($f, ['codigo' => 'insumo', 'lote' => 'lote', 'destino' => 'ubicación destino'])) return $e;
+      if (!isset($cx->insumos[texto($f['codigo'])])) return 'El insumo no existe en el catálogo.';
+      if (!entero_pos($f['cantidad'] ?? null)) return 'La cantidad a mover debe ser un número entero mayor a 0.';
+      if (strcasecmp(texto($f['origen'] ?? ''), texto($f['destino'])) === 0) return 'La ubicación destino debe ser distinta a la de origen.';
+      if ($e = validar_ubicacion($cx, $f['destino'], true)) return $e;
+      $hay = stock_ubicacion($cx, texto($f['codigo']), texto($f['lote']), texto($f['origen'] ?? ''));
+      if ((float)$f['cantidad'] > $hay + 1e-9) return 'En ' . (texto($f['origen'] ?? '') ?: 'sin ubicación') . ' solo hay ' . (0 + $hay) . ' de ese lote.';
+      if (!mismo_usuario($f['movidoPor'] ?? '', $u)) return 'El registro debe quedar a nombre de quien lo guarda.';
+      return fecha_registro($f['fecha'] ?? '');
   }
   return 'Tabla no válida.';
 }
@@ -202,6 +248,12 @@ function validar_cambios(Contexto $cx, array $cambios): ?string {
     if ($id === '' || !preg_match('/^[A-Za-z0-9_.\-]{1,40}$/', $id)) return 'Identificador de registro no válido.';
     $vieja = leer_fila($cx->pdo, $cx->planta, $tabla, $id);
     if (!isset($c['fila'])) {
+      /* El auxiliar elimina ubicaciones de su lista, solo si ya no tienen insumos guardados */
+      if ($tabla === 'ubicaciones' && $cx->rol === 'Auxiliar') {
+        if ($vieja && abs(stock_ubicacion($cx, null, null, texto($vieja['nombre'] ?? ''))) > 1e-9) return 'Esa ubicación todavía tiene insumos: muévelos antes de eliminarla.';
+        continue;
+      }
+      if ($tabla === 'traslados') return '!Los traslados no se eliminan: si fue un error, se mueve de vuelta.';
       if ($cx->rol !== 'Supervisor') return '!Solo la supervisora puede eliminar.';
       if ($tabla === 'bitacora') return '!El historial de modificaciones no se puede eliminar.';
       continue;

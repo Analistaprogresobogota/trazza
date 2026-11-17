@@ -124,7 +124,7 @@ function leer_fila(PDO $pdo, string $planta, string $tabla, string $id): ?array 
 function respaldo_pg(PDO $pdo): void {
   $ddl = ['usuarios' => sql_crear()[0], 'secuencias' => sql_crear()[1], 'plantas' => sql_tabla_plantas()];
   if (tabla_existe($pdo, 'accesos')) $ddl['accesos'] = sql_tabla_accesos();
-  foreach (plantas_bd() as $p) { $i = 0; $sqls = sql_tablas_planta($p['prefijo']); foreach (TABLAS as $def) $ddl[$p['prefijo'] . '_' . $def['sql']] = $sqls[$i++]; }
+  foreach (plantas_bd() as $p) { asegurar_tablas_planta($pdo, $p['id']); $i = 0; $sqls = sql_tablas_planta($p['prefijo']); foreach (TABLAS as $def) $ddl[$p['prefijo'] . '_' . $def['sql']] = $sqls[$i++]; }
   $esquema = $pdo->query('SELECT current_schema()')->fetchColumn();
   echo "-- Respaldo de Trazza (PostgreSQL) · esquema $esquema · " . date('c') . "\n-- CONFIDENCIAL: incluye usuarios (contraseñas cifradas). Guardar en lugar privado.\n";
   echo "-- Restaurar: psql -d <base> -f este_archivo.sql (con el mismo search_path/esquema). Reemplaza las tablas que contiene.\n-- Tablas: " . count($ddl) . "\n\nSET client_encoding = 'UTF8';\nBEGIN;\n\n";

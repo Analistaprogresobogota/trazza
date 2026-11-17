@@ -26,7 +26,7 @@ Aplicación web: HTML/JS estático y una API en PHP. Funciona con **PostgreSQL**
 5. Al terminar, `pruebas/limpiar_pruebas.sql` borra los datos de prueba y luego se eliminan los usuarios temporales.
 
 ### Los dos motores (PostgreSQL y MySQL)
-`pruebas/pruebas_motores.py` corre los casos del protocolo con el mismo código contra `/mysql` (MariaDB) y `/pg` (PostgreSQL 16). Las dos bases se cargan con el mismo respaldo; el servidor de prueba es la configuración `trazza-motores`, en el puerto 5183. Un caso es PASS solo si los dos motores responden lo esperado. Resultado actual: 28/28 PASS.
+`pruebas/pruebas_motores.py` corre los casos del protocolo con el mismo código contra `/mysql` (MariaDB) y `/pg` (PostgreSQL 16). Las dos bases se cargan con el mismo respaldo; el servidor de prueba es la configuración `trazza-motores`, en el puerto 5183. Un caso es PASS solo si los dos motores responden lo esperado. Resultado actual: 46/46 PASS (incluye ubicaciones y traslados).
 
 ## Desplegar
 1. Copiar los archivos cambiados de `prototipo/` a `publicar/trazza/`.

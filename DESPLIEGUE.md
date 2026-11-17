@@ -130,7 +130,7 @@ Si todo da lo esperado, avisar a la planta que registre en el servidor nuevo des
 2. Reemplazar los archivos de la carpeta del servidor por los de `prototipo/`, **sin tocar** `api/config.php`.
 3. Repetir la verificación del paso 6.
 
-No hay migraciones de esquema: las tablas nuevas que necesite una versión las crea la app sola.
+No hay migraciones de esquema: las tablas nuevas que necesite una versión las crea la app sola. Por ejemplo, las de ubicaciones y traslados se crean la primera vez que alguien entra a cada planta.
 
 ## Volver atrás
 
@@ -159,7 +159,8 @@ No hay migraciones de esquema: las tablas nuevas que necesite una versión las c
 | Validaciones de datos (cantidades, fechas, insumo, textos, lote parcial) | 8 | PASS en ambos motores |
 | Consecutivos, versión, lectura completa, bloqueo de ingreso, panel de Progreso, crear planta | 6 | PASS en ambos motores |
 | Respaldo: permisos, descarga y restauración completa en una base nueva | 3 | PASS en ambos motores |
-| **Total** | **28** | **28/28 PASS** |
+| Ubicaciones y traslados: activar el módulo, lista del auxiliar, entradas y devoluciones con ubicación, traslados parciales, límites y permisos | 18 | PASS en ambos motores |
+| **Total** | **46** | **46/46 PASS** |
 
 Migración del respaldo real con `migrar_a_postgresql.php`:
 - **21 de 21 tablas en PASS**, con las mismas filas y las mismas sumas de cantidades;

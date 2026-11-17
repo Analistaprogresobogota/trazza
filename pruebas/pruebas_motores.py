@@ -272,8 +272,129 @@ def m06(m):
     pid = r["id"]; pre = "pl" + pid.lower()
     tablas = sql(f"select count(*) from information_schema.tables where table_name like '{pre}\\_%'", m)
     s2, r2 = prog[m].post("planta", {"planta": pid}); s3, d = prog[m].get("datos")
-    return (s if tablas == "9" and s3 == 200 else 500), f"planta {pid} · tablas creadas {tablas} · entra {s2} · datos {s3}"
-caso("M06", "Progreso crea una planta nueva (crea sus 9 tablas) y entra a ella", 200, m06)
+    return (s if tablas == "11" and s3 == 200 else 500), f"planta {pid} · tablas creadas {tablas} · entra {s2} · datos {s3}"
+caso("M06", "Progreso crea una planta nueva (crea sus 11 tablas) y entra a ella", 200, m06)
+
+# ---------- Ubicaciones y traslados (módulo activo en la planta PRUEBA) ----------
+UB = {}
+def ubic(nombre, bodega="KT"):
+    return {"id": nid("UB"), "nombre": nombre, "bodega": bodega, "creadoPor": "TMPAUX"}
+
+
+def u00(m):
+    s, r = prog[m].post("admin_plantas", {})
+    mods = next(x for x in r["plantas"] if x["id"] == "PRUEBA")["modulos"]
+    s2, r2 = prog[m].post("editar_planta", {"id": "PRUEBA", "modulos": mods + ["ubicaciones"]})
+    s3, d = aux[m].get("datos")
+    return s2, f"{r2} · módulos ahora: {json.loads(d)['planta']['modulos'][-1]}"
+caso("U00", "Progreso activa «Ubicaciones y traslados» en la planta desde el panel", 200, u00)
+
+
+def u01(m):
+    existia = sql("select count(*) from information_schema.tables where table_name='tq_traslados'", m)
+    a, b = ubic(f"ESTANTE A-{m.upper()}"), ubic(f"ESTANTE B-{m.upper()}")
+    s, r = aux[m].guardar(ch("ubicaciones", a), ch("ubicaciones", b)); UB[m] = (a, b)
+    return s, f"{r} · tabla traslados antes: {existia} · después: {sql(chr(39).join(['select count(*) from information_schema.tables where table_name=', 'tq_traslados', '']), m)} · filas: {sql('select count(*) from tq_ubicaciones', m)}"
+caso("U01", "Auxiliar crea ubicaciones (las tablas nuevas se crean solas en la planta existente)", 200, u01)
+
+
+def u02(m):
+    return sup[m].guardar(ch("ubicaciones", dict(ubic("ESTANTE SUP"), creadoPor="TMPSUP")))
+caso("U02", "Supervisora intenta crear una ubicación (la lista es del auxiliar)", 403, u02)
+
+
+def u03(m):
+    return aux[m].guardar(ch("ubicaciones", ubic(UB[m][0]["nombre"].lower())))
+caso("U03", "Ubicación repetida (mismo nombre en minúsculas)", 422, u03)
+
+
+def u04(m):
+    return aux[m].guardar(ch("recepciones", entrada("tmpaux")))
+caso("U04", "Entrada sin ubicación con el módulo activo", 422, u04)
+
+
+def u05(m):
+    return aux[m].guardar(ch("recepciones", entrada("tmpaux", ubicacion="NO EXISTE")))
+caso("U05", "Entrada con una ubicación que no está en la lista", 422, u05)
+
+
+def u06(m):
+    f = entrada("tmpaux", lote="LTUB", cantidad=50, ubicacion=UB[m][0]["nombre"]); s, r = aux[m].guardar(ch("recepciones", f)); UB[m + "e"] = f
+    return s, f"{r} · extra: {uno('tq_entradas', 'extra', f['id'], m)}"
+caso("U06", "Entrada con ubicación válida (50 und lote LTUB)", 200, u06)
+
+
+def tras(m, cant, origen, destino, quien="TMPAUX"):
+    return {"id": nid("TR"), "fecha": HOY, "hora": "11:00", "codigo": COD, "lote": "LTUB", "cantidad": cant, "origen": origen, "destino": destino, "movidoPor": quien, "observaciones": ""}
+
+
+def u07(m):
+    a, b = UB[m][0]["nombre"], UB[m][1]["nombre"]
+    s, r = aux[m].guardar(ch("traslados", tras(m, 20, a, b)))
+    return s, f"{r} · traslados: {sql('select origen, destino, cantidad from tq_traslados', m)}"
+caso("U07", "Auxiliar mueve 20 de 50 a otra ubicación (traslado parcial)", 200, u07)
+
+
+def u08(m):
+    return aux[m].guardar(ch("traslados", tras(m, 31, UB[m][0]["nombre"], UB[m][1]["nombre"])))
+caso("U08", "Mover más de lo que queda en la ubicación (quedan 30, mueve 31)", 422, u08)
+
+
+def u09(m):
+    return aux[m].guardar(ch("traslados", tras(m, 1, UB[m][0]["nombre"], UB[m][0]["nombre"])))
+caso("U09", "Mover a la misma ubicación", 422, u09)
+
+
+def u10(m):
+    return sup[m].guardar(ch("traslados", tras(m, 5, UB[m][1]["nombre"], UB[m][0]["nombre"], "TMPSUP")))
+caso("U10", "Supervisora devuelve 5 a la ubicación original", 200, u10)
+
+
+def u11(m):
+    return cal[m].guardar(ch("traslados", tras(m, 1, UB[m][0]["nombre"], UB[m][1]["nombre"], "TMPCAL")))
+caso("U11", "Calidad intenta mover insumos", 403, u11)
+
+
+def u12(m):
+    return aux[m].guardar({"tabla": "ubicaciones", "id": UB[m][1]["id"], "fila": None})
+caso("U12", "Auxiliar intenta eliminar una ubicación que tiene insumos", 422, u12)
+
+
+def u13(m):
+    v = ubic(f"VACIA-{m.upper()}"); aux[m].guardar(ch("ubicaciones", v))
+    s, r = aux[m].guardar({"tabla": "ubicaciones", "id": v["id"], "fila": None})
+    return s, f"{r} · sigue en la base: {sql('select count(*) from tq_ubicaciones where id=' + chr(39) + v['id'] + chr(39), m)}"
+caso("U13", "Auxiliar elimina una ubicación vacía", 200, u13)
+
+
+def u14(m):
+    return sup[m].guardar({"tabla": "ubicaciones", "id": UB[m][0]["id"], "fila": None})
+caso("U14", "Supervisora intenta eliminar una ubicación", 403, u14)
+
+
+def u15(m):
+    tid = sql("select id from tq_traslados limit 1", m)
+    return sup[m].guardar({"tabla": "traslados", "id": tid, "fila": None})
+caso("U15", "Eliminar un traslado (no se permite: se mueve de vuelta)", 403, u15)
+
+
+def u16(m):
+    op = f"OPU{next(seq)}"
+    sal = {"id": nid("S"), "fecha": HOY, "hora": "10:00", "ordenProduccion": op, "destino": "L1", "codigo": COD, "cantidad": 3, "unidad": "UND",
+           "lote": "LTUB", "ubicacion": UB[m][0]["nombre"], "entregadoPor": "TMPAUX", "recibidoPor": "", "recibido": {"estado": "Pendiente", "por": "", "fecha": ""}, "observaciones": ""}
+    s1, _ = aux[m].guardar(ch("salidas", sal))
+    dv = {"id": nid("DV"), "fecha": HOY, "hora": "10:05", "op": op, "codigo": COD, "lote": "LTUB", "buenas": 1, "malas": 0, "motivo": "Sobrante", "registradoPor": "TMPAUX", "observaciones": ""}
+    s, r = aux[m].guardar(ch("devoluciones", dv))
+    s2, r2 = aux[m].guardar(ch("devoluciones", dict(dv, id=nid("DV"), ubicacion=UB[m][1]["nombre"])))
+    return s, f"salida desde ubicación: {s1} · sin ubicación: {s} {r} · con ubicación: {s2}"
+caso("U16", "Devolución con unidades buenas sin ubicación (rechazada); con ubicación sí guarda", 422, u16)
+
+
+def u17(m):
+    s, body = aux[m].get("datos"); d = json.loads(body)["datos"]
+    ok = len(d["ubicaciones"]) >= 2 and len(d["traslados"]) == 2 and any(r.get("ubicacion") == UB[m][0]["nombre"] for r in d["recepciones"])
+    return (s if ok else 500), f"la app recibe {len(d['ubicaciones'])} ubicaciones, {len(d['traslados'])} traslados y la ubicación de la entrada"
+caso("U17", "La app lee ubicaciones, traslados y la ubicación de cada entrada", 200, u17)
 
 # ---------- Respaldo ----------
 def r01(m):
