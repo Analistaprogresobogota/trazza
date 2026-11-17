@@ -181,7 +181,7 @@ function validar_nuevo(Contexto $cx, string $tabla, array $f): ?string {
     case 'proveedores':
       return obligatorios($f, ['nombre' => 'nombre del proveedor']);
     case 'ubicaciones':
-      if ($cx->rol !== 'Auxiliar') return '!Solo el auxiliar administra la lista de ubicaciones.';
+      if ($cx->rol !== 'Supervisor') return '!Solo la supervisora administra la lista de ubicaciones.';
       if ($e = obligatorios($f, ['nombre' => 'nombre de la ubicación', 'bodega' => 'bodega'])) return $e;
       if (!in_array($f['bodega'], $cx->bodegas(), true)) return 'Bodega no válida para esta planta.';
       if (isset($cx->ubicaciones()[mb_strtoupper(texto($f['nombre']))])) return 'Ya existe una ubicación con ese nombre.';
@@ -248,8 +248,8 @@ function validar_cambios(Contexto $cx, array $cambios): ?string {
     if ($id === '' || !preg_match('/^[A-Za-z0-9_.\-]{1,40}$/', $id)) return 'Identificador de registro no válido.';
     $vieja = leer_fila($cx->pdo, $cx->planta, $tabla, $id);
     if (!isset($c['fila'])) {
-      /* El auxiliar elimina ubicaciones de su lista, solo si ya no tienen insumos guardados */
-      if ($tabla === 'ubicaciones' && $cx->rol === 'Auxiliar') {
+      /* La supervisora elimina ubicaciones de la lista, solo si ya no tienen insumos guardados */
+      if ($tabla === 'ubicaciones' && $cx->rol === 'Supervisor') {
         if ($vieja && abs(stock_ubicacion($cx, null, null, texto($vieja['nombre'] ?? ''))) > 1e-9) return 'Esa ubicación todavía tiene insumos: muévelos antes de eliminarla.';
         continue;
       }

@@ -278,7 +278,7 @@ caso("M06", "Progreso crea una planta nueva (crea sus 11 tablas) y entra a ella"
 # ---------- Ubicaciones y traslados (módulo activo en la planta PRUEBA) ----------
 UB = {}
 def ubic(nombre, bodega="KT"):
-    return {"id": nid("UB"), "nombre": nombre, "bodega": bodega, "creadoPor": "TMPAUX"}
+    return {"id": nid("UB"), "nombre": nombre, "bodega": bodega, "creadoPor": "TMPSUP"}
 
 
 def u00(m):
@@ -293,18 +293,18 @@ caso("U00", "Progreso activa «Ubicaciones y traslados» en la planta desde el p
 def u01(m):
     existia = sql("select count(*) from information_schema.tables where table_name='tq_traslados'", m)
     a, b = ubic(f"ESTANTE A-{m.upper()}"), ubic(f"ESTANTE B-{m.upper()}")
-    s, r = aux[m].guardar(ch("ubicaciones", a), ch("ubicaciones", b)); UB[m] = (a, b)
+    s, r = sup[m].guardar(ch("ubicaciones", a), ch("ubicaciones", b)); UB[m] = (a, b)
     return s, f"{r} · tabla traslados antes: {existia} · después: {sql(chr(39).join(['select count(*) from information_schema.tables where table_name=', 'tq_traslados', '']), m)} · filas: {sql('select count(*) from tq_ubicaciones', m)}"
-caso("U01", "Auxiliar crea ubicaciones (las tablas nuevas se crean solas en la planta existente)", 200, u01)
+caso("U01", "Supervisora crea ubicaciones (las tablas nuevas se crean solas en la planta existente)", 200, u01)
 
 
 def u02(m):
-    return sup[m].guardar(ch("ubicaciones", dict(ubic("ESTANTE SUP"), creadoPor="TMPSUP")))
-caso("U02", "Supervisora intenta crear una ubicación (la lista es del auxiliar)", 403, u02)
+    return aux[m].guardar(ch("ubicaciones", dict(ubic("ESTANTE AUX"), creadoPor="TMPAUX")))
+caso("U02", "Auxiliar intenta crear una ubicación (solo la elige de la lista)", 403, u02)
 
 
 def u03(m):
-    return aux[m].guardar(ch("ubicaciones", ubic(UB[m][0]["nombre"].lower())))
+    return sup[m].guardar(ch("ubicaciones", ubic(UB[m][0]["nombre"].lower())))
 caso("U03", "Ubicación repetida (mismo nombre en minúsculas)", 422, u03)
 
 
@@ -356,20 +356,20 @@ caso("U11", "Calidad intenta mover insumos", 403, u11)
 
 
 def u12(m):
-    return aux[m].guardar({"tabla": "ubicaciones", "id": UB[m][1]["id"], "fila": None})
-caso("U12", "Auxiliar intenta eliminar una ubicación que tiene insumos", 422, u12)
+    return sup[m].guardar({"tabla": "ubicaciones", "id": UB[m][1]["id"], "fila": None})
+caso("U12", "Supervisora intenta eliminar una ubicación que tiene insumos", 422, u12)
 
 
 def u13(m):
-    v = ubic(f"VACIA-{m.upper()}"); aux[m].guardar(ch("ubicaciones", v))
-    s, r = aux[m].guardar({"tabla": "ubicaciones", "id": v["id"], "fila": None})
+    v = ubic(f"VACIA-{m.upper()}"); sup[m].guardar(ch("ubicaciones", v))
+    s, r = sup[m].guardar({"tabla": "ubicaciones", "id": v["id"], "fila": None})
     return s, f"{r} · sigue en la base: {sql('select count(*) from tq_ubicaciones where id=' + chr(39) + v['id'] + chr(39), m)}"
-caso("U13", "Auxiliar elimina una ubicación vacía", 200, u13)
+caso("U13", "Supervisora elimina una ubicación vacía", 200, u13)
 
 
 def u14(m):
-    return sup[m].guardar({"tabla": "ubicaciones", "id": UB[m][0]["id"], "fila": None})
-caso("U14", "Supervisora intenta eliminar una ubicación", 403, u14)
+    return aux[m].guardar({"tabla": "ubicaciones", "id": UB[m][0]["id"], "fila": None})
+caso("U14", "Auxiliar intenta eliminar una ubicación", 403, u14)
 
 
 def u15(m):

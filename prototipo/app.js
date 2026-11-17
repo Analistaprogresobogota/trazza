@@ -26,7 +26,7 @@ const PUEDE = {
   firmarSalidas: ES.supervisor,      // "Recibido por" + firma dibujada
   aprobarCalidad: ES.calidad,        // tickets de calidad
   editarCatalogos: ES.supervisor,    // tablas de insumos y proveedores
-  editarUbicaciones: ES.auxiliar,    // lista de ubicaciones de la bodega
+  editarUbicaciones: ES.supervisor,  // lista de ubicaciones de la bodega (el auxiliar solo las elige)
   moverUbicacion: ES.auxiliar || ES.supervisor, // traslados entre ubicaciones
 };
 const BODEGAS = PLANTA === "PRUEBA" ? ["KT", "TQ"] : ["Bodega"];
@@ -416,7 +416,7 @@ function formEntrada() {
         <div class="campo"><label for="e-cant">Cantidad recibida <span class="req">*</span></label><input type="number" id="e-cant" min="1" step="1" placeholder="0"><span class="ayuda">Número entero mayor a 0</span></div>
         <div class="campo"><label for="e-und">Unidad</label><input id="e-und" readonly placeholder="Según el insumo"></div>
         <div class="campo"><label for="e-lote">Lote <span class="req">*</span></label><input id="e-lote" placeholder="Ej: TKT0346024 o N/A"></div>
-        ${UBIC_ON() ? `<div class="campo"><label for="e-ubic">Ubicación <span class="req">*</span></label><select id="e-ubic">${opciones(ubicacionesDe(BODEGAS.length === 1 ? BODEGAS[0] : "").map(u => [u, u]), "", BODEGAS.length === 1 ? "Selecciona…" : "Primero la bodega…")}</select><span class="ayuda">¿No está? Agrégala en Ubicaciones.</span></div>` : ""}
+        ${UBIC_ON() ? `<div class="campo"><label for="e-ubic">Ubicación <span class="req">*</span></label><select id="e-ubic">${opciones(ubicacionesDe(BODEGAS.length === 1 ? BODEGAS[0] : "").map(u => [u, u]), "", BODEGAS.length === 1 ? "Selecciona…" : "Primero la bodega…")}</select><span class="ayuda">¿No está? Pídele a la supervisora que la agregue.</span></div>` : ""}
         <div class="campo"><label for="e-fab">Fecha de fabricación <span class="req">*</span></label><input type="date" id="e-fab" max="${ahora().fecha}">${checkNA("e-fab")}</div>
         <div class="campo"><label for="e-venc">Fecha de vencimiento <span class="req">*</span></label><input type="date" id="e-venc"><span class="ayuda">Debe ser posterior a la de fabricación</span>${checkNA("e-venc")}</div>
         ${moduloActivo("calidad") ? `<div class="campo"><label for="e-calidad">¿Requiere revisión de calidad? <span class="req">*</span></label><select id="e-calidad">${opciones([["No", "No"], ["Sí", "Sí · crear ticket para Calidad"]], "No")}</select>
@@ -895,7 +895,7 @@ function vUbicaciones() {
   if (tab === "lista") {
     const ed = PUEDE.editarUbicaciones;
     const total = n => ubic.filter(x => U(x.ubicacion) === U(n)).reduce((a, x) => a + x.cantidad, 0);
-    return `${tabs}<p class="aviso">${ed ? "Agrega aquí las ubicaciones de la bodega (estante, nivel, posición…). Aparecen en entradas, devoluciones y traslados. Solo se puede eliminar una ubicación vacía." : "Solo lectura. La lista de ubicaciones la administra el auxiliar."}</p>
+    return `${tabs}<p class="aviso">${ed ? "Agrega aquí las ubicaciones de la bodega (estante, nivel, posición…). Aparecen en entradas, devoluciones y traslados. Solo se puede eliminar una ubicación vacía." : "Solo lectura. La lista de ubicaciones la administra la supervisora; aquí se eligen en entradas, devoluciones y traslados."}</p>
       ${ed ? `<section class="card"><h2>Agregar ubicación</h2><form id="form-ubic" class="form-grid" novalidate>
         <div class="campo ancho"><label for="ub-nom">Nombre <span class="req">*</span></label><input id="ub-nom" placeholder="Ej: ESTANTE A - NIVEL 2"></div>
         <div class="campo"><label for="ub-bod">Bodega <span class="req">*</span></label><select id="ub-bod">${opciones(BODEGAS.map(b => [b, nomBodega(b)]), BODEGAS[0])}</select></div>
