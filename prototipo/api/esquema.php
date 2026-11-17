@@ -47,7 +47,7 @@ const TABLAS = [
     'baseFechaEntrada' => ['base_fecha_entrada', 'F'], 'baseFechaSalida' => ['base_fecha_salida', 'F'], 'observaciones' => ['observaciones', 'L']]],
   'proveedores' => ['sql' => 'proveedores', 'campos' => ['id' => ['id', 'I'], 'nombre' => ['nombre', 'T'], 'nit' => ['nit', 'I'], 'contacto' => ['contacto', 'T']]],
   'kits' => ['sql' => 'kits', 'campos' => ['id' => ['id', 'T'], 'kit' => ['kit', 'T']]],
-  /* Ubicaciones dentro de la bodega (las administra la supervisora; el auxiliar las elige) y traslados de insumos entre ubicaciones */
+  /* Ubicaciones: la tabla queda reservada (la ubicación hoy se escribe a mano en cada registro) y traslados de insumos entre ubicaciones */
   'ubicaciones' => ['sql' => 'ubicaciones', 'campos' => ['id' => ['id', 'I'], 'nombre' => ['nombre', 'T'], 'bodega' => ['bodega', 'I'], 'creadoPor' => ['creado_por', 'T']]],
   'traslados' => ['sql' => 'traslados', 'campos' => [
     'id' => ['id', 'I'], 'fecha' => ['fecha', 'F'], 'hora' => ['hora', 'H'], 'codigo' => ['codigo', 'I'], 'lote' => ['lote', 'T'], 'cantidad' => ['cantidad', 'N'],
@@ -62,7 +62,7 @@ const TABLAS = [
 /* Qué tablas puede escribir cada rol (Progreso solo ve). Solo la supervisora elimina. */
 const ESCRIBE = [
   'Auxiliar' => ['recepciones', 'salidas', 'devoluciones', 'averias', 'solicitudes', 'bitacora', 'traslados'],
-  'Supervisor' => ['recepciones', 'salidas', 'devoluciones', 'averias', 'insumos', 'proveedores', 'solicitudes', 'bitacora', 'ubicaciones', 'traslados'],
+  'Supervisor' => ['recepciones', 'salidas', 'devoluciones', 'averias', 'insumos', 'proveedores', 'solicitudes', 'bitacora', 'traslados'],
   'Calidad' => ['recepciones', 'bitacora'],
 ];
 /* Tabla "plantas": se crea sola la primera vez, con TQ Devoluciones y Progreso */

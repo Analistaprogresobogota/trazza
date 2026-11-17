@@ -159,8 +159,8 @@ No hay migraciones de esquema: las tablas nuevas que necesite una versión las c
 | Validaciones de datos (cantidades, fechas, insumo, textos, lote parcial) | 8 | PASS en ambos motores |
 | Consecutivos, versión, lectura completa, bloqueo de ingreso, panel de Progreso, crear planta | 6 | PASS en ambos motores |
 | Respaldo: permisos, descarga y restauración completa en una base nueva | 3 | PASS en ambos motores |
-| Ubicaciones y traslados: activar el módulo, lista de la supervisora, entradas y devoluciones con ubicación, traslados parciales, límites y permisos | 18 | PASS en ambos motores |
-| **Total** | **46** | **46/46 PASS** |
+| Ubicaciones y traslados: activar el módulo, ubicación escrita a mano y opcional, traslados parciales, límites y permisos | 14 | PASS en ambos motores |
+| **Total** | **42** | **42/42 PASS** |
 
 Migración del respaldo real con `migrar_a_postgresql.php`:
 - **21 de 21 tablas en PASS**, con las mismas filas y las mismas sumas de cantidades;
