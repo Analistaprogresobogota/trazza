@@ -102,7 +102,7 @@ function stock_ubicacion(Contexto $cx, ?string $codigo, ?string $lote, string $u
 function validar_ubicacion($nombre, bool $obligatoria): ?string {
   $n = texto($nombre);
   if ($n === '') return $obligatoria ? 'Falta: ubicación.' : null;
-  return mb_strlen($n) > 60 ? 'La ubicación es demasiado larga (máximo 60 caracteres).' : null;
+  return mb_strlen($n) > 1000 ? 'La ubicación es demasiado larga (máximo 1000 caracteres).' : null;
 }
 
 /* Registro nuevo: datos completos y coherentes */

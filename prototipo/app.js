@@ -207,8 +207,8 @@ function lotesEnOrdenDeUso(lotes) {
 const UBIC_ON = () => moduloActivo("ubicaciones");
 const SIN_UBIC = "Sin ubicación";
 const nomUbic = u => u || SIN_UBIC;
-/* Cantidad por insumo + lote + ubicación: entradas disponibles + devoluciones buenas − salidas ± traslados ('' = sin ubicación) */
-function calcUbicaciones() {
+/* Cantidad por insumo + lote + ubicación SIN cuadrar: entradas disponibles + devoluciones buenas − salidas ± traslados ('' = sin ubicación) */
+function calcUbicacionesBrutas() {
   const m = new Map(), k = (c, l, u) => `${c}|${U(l)}|${U(u)}`;
   const sumar = (cod, lote, ubic, cant) => {
     if (!cod || String(lote ?? "").trim() === "") return;
@@ -221,6 +221,41 @@ function calcUbicaciones() {
   salidas.filter(x => U(x.lote) !== "N/A").forEach(x => sumar(x.codigo, x.lote, x.ubicacion, -Number(x.cantidad || 0)));
   traslados.forEach(t => { sumar(t.codigo, t.lote, t.origen, -Number(t.cantidad)); sumar(t.codigo, t.lote, t.destino, Number(t.cantidad)); });
   return [...m.values()].filter(f => Math.abs(f.cantidad) > 1e-9);
+}
+/* Ubicaciones CUADRADAS con Inventario: por cada insumo, la suma de sus ubicaciones es igual a su stock.
+   - Si por lotes hay de más (salidas con lote "N/A", saldos históricos del Excel), lo que sobra se descuenta
+     en el orden en que salen los lotes (CLB primero, luego FIFO), empezando por lo que está sin ubicación.
+   - Si falta (stock del Excel que nunca tuvo lote), se muestra una fila "Sin lote" con la diferencia. */
+function calcUbicaciones() {
+  const brutas = calcUbicacionesBrutas(), stock = Object.fromEntries(calcInventario().map(i => [i.codigo, i.stock]));
+  const fechaLote = {}; calcLotes().forEach(l => (fechaLote[l.codigo + "|" + U(l.lote)] = l.fecha));
+  const out = [];
+  const porInsumo = {}; brutas.forEach(f => (porInsumo[f.codigo] ||= []).push(f));
+  Object.keys(stock).forEach(c => (porInsumo[c] ||= []));
+  for (const [cod, filas] of Object.entries(porInsumo)) {
+    if (stock[cod] === undefined) continue; // insumo eliminado del catálogo: no aparece en inventario
+    // 1. Por lote: las ubicaciones en negativo se compensan con las positivas del mismo lote
+    const porLote = {}; filas.forEach(f => (porLote[U(f.lote)] ||= []).push({ ...f }));
+    let vivas = [];
+    for (const fl of Object.values(porLote)) {
+      let deuda = fl.filter(f => f.cantidad < 0).reduce((a, f) => a - f.cantidad, 0);
+      const pos = fl.filter(f => f.cantidad > 0).sort((a, b) => (a.ubicacion !== "") - (b.ubicacion !== ""));
+      for (const f of pos) { const q = Math.min(deuda, f.cantidad); f.cantidad -= q; deuda -= q; }
+      vivas.push(...pos.filter(f => f.cantidad > 1e-9));
+    }
+    // 2. Cuadre con el stock del inventario
+    const objetivo = Math.max(0, stock[cod]);
+    let sobra = vivas.reduce((a, f) => a + f.cantidad, 0) - objetivo;
+    if (sobra > 1e-9) {
+      vivas.sort((a, b) => ordenFIFO({ lote: a.lote, fecha: fechaLote[cod + "|" + U(a.lote)] }, { lote: b.lote, fecha: fechaLote[cod + "|" + U(b.lote)] }) || (a.ubicacion !== "") - (b.ubicacion !== ""));
+      for (const f of vivas) { if (sobra <= 1e-9) break; const q = Math.min(sobra, f.cantidad); f.cantidad -= q; sobra -= q; }
+      vivas = vivas.filter(f => f.cantidad > 1e-9);
+    } else if (sobra < -1e-9) {
+      vivas.push({ codigo: cod, lote: "", ubicacion: "", cantidad: -sobra, sinLote: true });
+    }
+    out.push(...vivas);
+  }
+  return out;
 }
 /* Reparte la cantidad de un lote entre sus ubicaciones (primero las que tienen nombre, al final "sin ubicación") */
 function repartirUbicaciones(cod, lote, cantidad, ubicSaldo) {
@@ -236,7 +271,7 @@ const normUbic = v => U(v).replace(/\s+/g, " ");
 /* Sugerencias: ubicaciones que ya se han usado en la planta */
 const ubicacionesUsadas = () => [...new Set([...D().recepciones, ...D().salidas, ...D().devoluciones].map(r => normUbic(r.ubicacion)).concat(D().traslados.flatMap(t => [normUbic(t.origen), normUbic(t.destino)])).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 const datalistUbic = () => `<datalist id="dl-ubic">${ubicacionesUsadas().map(u => `<option value="${esc(u)}">`).join("")}</datalist>`;
-const campoUbic = (id, label, ayuda) => `<div class="campo"><label for="${id}">${label}</label><input id="${id}" list="dl-ubic" maxlength="60" autocomplete="off" placeholder="Ej: ESTANTE A - NIVEL 2" style="text-transform:uppercase">${datalistUbic()}<span class="ayuda">${ayuda}</span></div>`;
+const campoUbic = (id, label, ayuda) => `<div class="campo"><label for="${id}">${label}</label><input id="${id}" list="dl-ubic" maxlength="1000" autocomplete="off" placeholder="Ej: ESTANTE A - NIVEL 2" style="text-transform:uppercase">${datalistUbic()}<span class="ayuda">${ayuda}</span></div>`;
 
 /* Reparte una cantidad entre los lotes disponibles en orden de uso: CLB primero, luego FIFO (puede usar 2 o más lotes) */
 function repartirFIFO(cod, cantidad, saldos) {
@@ -420,7 +455,7 @@ function formEntrada() {
         <div class="campo"><label for="e-cant">Cantidad recibida <span class="req">*</span></label><input type="number" id="e-cant" min="1" step="1" placeholder="0"><span class="ayuda">Número entero mayor a 0</span></div>
         <div class="campo"><label for="e-und">Unidad</label><input id="e-und" readonly placeholder="Según el insumo"></div>
         <div class="campo"><label for="e-lote">Lote <span class="req">*</span></label><input id="e-lote" placeholder="Ej: TKT0346024 o N/A"></div>
-        ${UBIC_ON() ? campoUbic("e-ubic", "Ubicación", "Opcional: escríbela o elige una ya usada. Si aún no se sabe, déjala vacía.") : ""}
+        ${UBIC_ON() ? campoUbic("e-ubic", "Ubicación", "Opcional. Si el lote ocupa varias posiciones, escríbelas todas separadas por coma (sin límite). Si aún no se sabe, déjala vacía.") : ""}
         <div class="campo"><label for="e-fab">Fecha de fabricación <span class="req">*</span></label><input type="date" id="e-fab" max="${ahora().fecha}">${checkNA("e-fab")}</div>
         <div class="campo"><label for="e-venc">Fecha de vencimiento <span class="req">*</span></label><input type="date" id="e-venc"><span class="ayuda">Debe ser posterior a la de fabricación</span>${checkNA("e-venc")}</div>
         ${moduloActivo("calidad") ? `<div class="campo"><label for="e-calidad">¿Requiere revisión de calidad? <span class="req">*</span></label><select id="e-calidad">${opciones([["No", "No"], ["Sí", "Sí · crear ticket para Calidad"]], "No")}</select>
@@ -900,15 +935,17 @@ function vUbicaciones() {
   const filas = ubic.filter(x => x.cantidad > 0 && (!q || U(`${x.codigo} ${desc(x.codigo)} ${x.lote} ${nomUbic(x.ubicacion)}`).includes(q)))
     .sort((a, b) => (a.ubicacion === "") - (b.ubicacion === "") || a.ubicacion.localeCompare(b.ubicacion) || desc(a.codigo).localeCompare(desc(b.codigo)));
   const sinUb = ubic.filter(x => x.cantidad > 0 && !x.ubicacion).length;
+  const totalUb = ubic.reduce((a, x) => a + x.cantidad, 0), totalInv = calcInventario().reduce((a, i) => a + Math.max(0, i.stock), 0);
   return `${tabs}${sinUb ? `<p class="aviso">${sinUb} lote(s) con saldo todavía no tienen ubicación. ${PUEDE.moverUbicacion ? "Usa «Mover de ubicación» para asignarles una." : ""}</p>` : ""}
+    <p class="aviso">Cuadra con el inventario: ${fmtN(totalUb)} unidades en ubicaciones = ${fmtN(totalInv)} en inventario. Lo que salió sin lote se descuenta en el orden de uso de los lotes (CLB primero, luego FIFO).</p>
     <div class="filtros"><input id="f-ub" placeholder="Buscar insumo, lote o ubicación…" value="${esc(filtros.ub || "")}"></div>
     <section class="card">${tabla([{ t: "Ubicación" }, { t: "Insumo" }, { t: "Lote" }, { t: "Cantidad", cl: "num" }, ...(PUEDE.moverUbicacion ? [{ t: "" }] : [])],
-      filas.map(x => `<tr><td>${x.ubicacion ? `<b>${esc(x.ubicacion)}</b>` : `<span class="chip-e e-gris">${SIN_UBIC}</span>`}</td><td class="txt">${esc(insumoTxt(x.codigo))}</td><td>${esc(x.lote)}</td><td class="num fuerte">${fmtN(x.cantidad)}</td>${PUEDE.moverUbicacion ? `<td><button class="btn btn-borde btn-mini" data-mover="${esc(x.codigo + "|" + x.lote + "|" + x.ubicacion)}">⇄ Mover</button></td>` : ""}</tr>`),
+      filas.map(x => `<tr><td>${x.ubicacion ? `<b>${esc(x.ubicacion)}</b>` : `<span class="chip-e e-gris">${SIN_UBIC}</span>`}</td><td class="txt">${esc(insumoTxt(x.codigo))}</td><td>${x.sinLote ? `<span class="chip-e e-gris" title="Stock del inventario que no tiene lote registrado">Sin lote</span>` : esc(x.lote)}</td><td class="num fuerte">${fmtN(x.cantidad)}</td>${PUEDE.moverUbicacion ? `<td>${x.sinLote ? "" : `<button class="btn btn-borde btn-mini" data-mover="${esc(x.codigo + "|" + x.lote + "|" + x.ubicacion)}">⇄ Mover</button>`}</td>` : ""}</tr>`),
       "No hay insumos con saldo")}</section>`;
 }
 function abrirMover(pre = "") {
   if (!PUEDE.moverUbicacion) return;
-  const ubic = calcUbicaciones().filter(x => x.cantidad > 0);
+  const ubic = calcUbicaciones().filter(x => x.cantidad > 0 && !x.sinLote);
   const [pc, pl, pu] = pre ? pre.split("|") : [];
   const cods = [...new Set(ubic.map(x => x.codigo))].sort((a, b) => desc(a).localeCompare(desc(b)));
   abrirModal("Mover de ubicación", `<p class="sub">Cambia de lugar todo o parte de un lote. Queda en el historial quién lo movió, de dónde y a dónde.</p>
@@ -917,7 +954,7 @@ function abrirMover(pre = "") {
       <div class="campo ancho"><label for="m-ins">Insumo <span class="req">*</span></label><select id="m-ins">${opciones(cods.map(c => [c, insumoTxt(c)]), pc || "", "Selecciona…")}</select></div>
       <div class="campo ancho"><label for="m-desde">Lote y ubicación actual <span class="req">*</span></label><select id="m-desde"><option value="">Primero el insumo…</option></select></div>
       <div class="campo"><label for="m-cant">Cantidad a mover <span class="req">*</span></label><input type="number" id="m-cant" min="1" step="1"><span class="ayuda" id="m-info"></span></div>
-      <div class="campo"><label for="m-a">Nueva ubicación <span class="req">*</span></label><input id="m-a" list="dl-ubic" maxlength="60" autocomplete="off" placeholder="Escríbela o elige una ya usada" style="text-transform:uppercase">${datalistUbic()}</div>
+      <div class="campo"><label for="m-a">Nueva ubicación <span class="req">*</span></label><input id="m-a" list="dl-ubic" maxlength="1000" autocomplete="off" placeholder="Escríbela o elige una ya usada" style="text-transform:uppercase">${datalistUbic()}</div>
       <div class="campo"><label>Movido por</label><input value="${esc(SESION.usuario)}" readonly></div>
       <div class="campo ancho"><label for="m-obs">Observaciones</label><input id="m-obs" placeholder="Ej: Reorganización del estante A"></div>
     </div><p class="aviso rojo" id="m-error" hidden></p>

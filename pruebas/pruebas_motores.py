@@ -302,8 +302,10 @@ caso("U02", "Entrada con ubicación escrita a mano (50 und lote LTUB)", 200, u02
 
 
 def u03(m):
-    return aux[m].guardar(ch("recepciones", entrada("tmpaux", ubicacion="X" * 61)))
-caso("U03", "Ubicación de más de 60 caracteres", 422, u03)
+    s1, _ = aux[m].guardar(ch("recepciones", entrada("tmpaux", ubicacion=", ".join(f"16-{i:02d}-5A" for i in range(1, 41)))))
+    s2, r2 = aux[m].guardar(ch("recepciones", entrada("tmpaux", ubicacion="X" * 1001)))
+    return s2, f"40 posiciones en una ubicación: {s1} · más de 1000 caracteres: {s2}"
+caso("U03", "Un lote con 40 posiciones se guarda; más de 1000 caracteres no", 422, u03)
 
 
 def tras(m, cant, origen, destino, quien="TMPAUX"):
