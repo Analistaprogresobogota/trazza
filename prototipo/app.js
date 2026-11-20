@@ -469,7 +469,7 @@ function formEntrada() {
 }
 function tablaRecepciones(filas) {
   return tabla([{ t: "Fecha" }, { t: "Bodega" }, { t: "OC" }, { t: "Facturas" }, { t: "Proveedor" }, { t: "Remisión" }, { t: "Insumo" }, { t: "Cantidad", cl: "num" }, { t: "Und" }, { t: "Lote" }, ...(UBIC_ON() ? [{ t: "Ubicación" }] : []), { t: "Fabricación" }, { t: "Vencimiento" }, { t: "Calidad" }, { t: "Recibido por" }, { t: "Obs." }, { t: "" }],
-    filas.map(r => `<tr><td>${fFecha(r)}</td><td>${esc(r.bodega ? nomBodega(r.bodega) : "—")}</td><td>${esc(r.ordenCompra)}</td><td>${esc(r.factura || "—")}</td><td>${esc(r.proveedor)}</td><td>${esc(r.remision)}</td><td class="txt">${esc(insumoTxt(r.codigo))}</td><td class="num fuerte">${fmtN(r.cantidad)}</td><td>${esc(r.unidad)}</td><td>${esc(r.lote)}</td>${UBIC_ON() ? `<td>${esc(nomUbic(r.ubicacion))}</td>` : ""}<td>${r.fechaFabricacion ? fmtF(r.fechaFabricacion) : "—"}</td><td>${r.fechaVencimiento ? fmtF(r.fechaVencimiento) : "—"}</td>
+    filas.map(r => `<tr><td>${fFecha(r)}</td><td>${esc(r.bodega ? nomBodega(r.bodega) : "—")}</td><td>${esc(r.ordenCompra)}</td><td>${esc(r.factura || "—")}</td><td>${esc(r.proveedor)}</td><td>${esc(r.remision)}</td><td class="txt">${esc(insumoTxt(r.codigo))}</td><td class="num fuerte">${fmtN(r.cantidad)}</td><td>${esc(r.unidad)}</td><td>${esc(r.lote)}</td>${UBIC_ON() ? `<td class="td-ubic">${esc(nomUbic(r.ubicacion))}</td>` : ""}<td>${r.fechaFabricacion ? fmtF(r.fechaFabricacion) : "—"}</td><td>${r.fechaVencimiento ? fmtF(r.fechaVencimiento) : "—"}</td>
       <td>${r.origen === "saldo-inicial" ? `<span class="chip-e e-info">Saldo inicial</span>` : `<span class="chip-e ${ESTADO_CAL_CHIP[r.calidad?.estado] || "e-gris"}" title="${esc(r.calidad?.ticket || "")}">${esc(r.calidad?.estado || "No aplica")}${r.calidad?.ticket ? " · " + esc(r.calidad.ticket) : ""}</span>`}</td>
       <td>${esc(r.recibidoPor)}</td><td>${esc(r.observaciones)}</td><td>${btnEditar("recepciones", r.id)}</td></tr>`));
 }
@@ -536,7 +536,7 @@ const chipRecibido = s => s.recibido?.estado === "Pendiente" ? `<span class="chi
   : `${esc(s.recibidoPor || s.recibido?.por || "")}${s.recibido?.firma ? ` <button class="btn-lapiz" data-ver-firma="${esc(s.id)}" title="Ver firma">✍</button>` : ""}`;
 function tablaSalidas(filas) {
   return tabla([{ t: "Fecha" }, { t: "OP" }, { t: "Destino" }, { t: "Insumo" }, { t: "Cantidad", cl: "num" }, { t: "Und" }, { t: "Lote" }, ...(UBIC_ON() ? [{ t: "Ubicación" }] : []), { t: "Entregó" }, { t: "Recibió" }, { t: "Obs." }, { t: "" }],
-    filas.map(s => `<tr><td>${fFecha(s)}</td><td>${esc(s.ordenProduccion)}</td><td>${esc(s.destino)}</td><td class="txt">${esc(insumoTxt(s.codigo))}</td><td class="num fuerte">${fmtN(s.cantidad)}</td><td>${esc(s.unidad)}</td><td>${esc(s.lote)}</td>${UBIC_ON() ? `<td>${esc(nomUbic(s.ubicacion))}</td>` : ""}<td>${esc(s.entregadoPor)}</td><td>${chipRecibido(s)}</td><td>${esc(s.observaciones)}</td><td>${btnEditar("salidas", s.id)}</td></tr>`));
+    filas.map(s => `<tr><td>${fFecha(s)}</td><td>${esc(s.ordenProduccion)}</td><td>${esc(s.destino)}</td><td class="txt">${esc(insumoTxt(s.codigo))}</td><td class="num fuerte">${fmtN(s.cantidad)}</td><td>${esc(s.unidad)}</td><td>${esc(s.lote)}</td>${UBIC_ON() ? `<td class="td-ubic">${esc(nomUbic(s.ubicacion))}</td>` : ""}<td>${esc(s.entregadoPor)}</td><td>${chipRecibido(s)}</td><td>${esc(s.observaciones)}</td><td>${btnEditar("salidas", s.id)}</td></tr>`));
 }
 function initSalidas() {
   const inv = calcInventario(), lotes = calcLotes(), ubicTodas = UBIC_ON() ? calcUbicaciones() : [];
@@ -907,7 +907,7 @@ function vInventario() {
 /* ---------- Control de lotes FIFO (en orden de uso) ---------- */
 function vLotes() {
   const ubicLotes = UBIC_ON() ? calcUbicaciones() : [];
-  const lugaresTxt = l => l.saldo <= 0 ? "—" : lugaresDeLote(l.codigo, l.lote, ubicLotes).map(x => `<span class="chip-e ${x.ubicacion ? "e-info" : "e-gris"}">📍 ${esc(nomUbic(x.ubicacion))}: ${fmtN(x.cantidad)}</span>`).join(" ") || "—";
+  const lugaresTxt = l => l.saldo <= 0 ? "—" : lugaresDeLote(l.codigo, l.lote, ubicLotes).map(x => `<span class="chip-e chip-ubic ${x.ubicacion ? "e-info" : "e-gris"}">📍 ${esc(nomUbic(x.ubicacion))}: ${fmtN(x.cantidad)}</span>`).join(" ") || "—";
   const lotes = calcLotes(), tab = filtros.lotesTab || "control", q = U(filtros.lotes || "");
   setAcciones(btnCsv("lotes", "⤓ Exportar CSV"));
   const base = tab === "control" ? lotes.filter(l => l.saldo >= 0) : lotes.filter(l => l.saldo < 0);
@@ -931,7 +931,7 @@ function vUbicaciones() {
   setAcciones(PUEDE.moverUbicacion ? `<button class="btn btn-primario" data-mover>⇄ Mover de ubicación</button>` : "");
   const tabs = `<div class="tabs">${[["donde", "Dónde está cada insumo"], ["mov", `Traslados (${D().traslados.length})`]].map(([k, t]) => `<button class="tab ${tab === k ? "activo" : ""}" data-ub-tab="${k}">${t}</button>`).join("")}</div>`;
   if (tab === "mov") return `${tabs}<section class="card">${tabla([{ t: "Fecha" }, { t: "Insumo" }, { t: "Lote" }, { t: "Cantidad", cl: "num" }, { t: "De" }, { t: "A" }, { t: "Movió" }, { t: "Obs." }],
-    [...D().traslados].reverse().map(t => `<tr><td>${fFecha(t)}</td><td class="txt">${esc(insumoTxt(t.codigo))}</td><td>${esc(t.lote)}</td><td class="num fuerte">${fmtN(t.cantidad)}</td><td>${esc(nomUbic(t.origen))}</td><td class="fuerte">${esc(t.destino)}</td><td>${esc(t.movidoPor)}</td><td>${esc(t.observaciones)}</td></tr>`), "Sin traslados")}</section>`;
+    [...D().traslados].reverse().map(t => `<tr><td>${fFecha(t)}</td><td class="txt">${esc(insumoTxt(t.codigo))}</td><td>${esc(t.lote)}</td><td class="num fuerte">${fmtN(t.cantidad)}</td><td class="td-ubic">${esc(nomUbic(t.origen))}</td><td class="td-ubic fuerte">${esc(t.destino)}</td><td>${esc(t.movidoPor)}</td><td>${esc(t.observaciones)}</td></tr>`), "Sin traslados")}</section>`;
   const filas = ubic.filter(x => x.cantidad > 0 && (!q || U(`${x.codigo} ${desc(x.codigo)} ${x.lote} ${nomUbic(x.ubicacion)}`).includes(q)))
     .sort((a, b) => (a.ubicacion === "") - (b.ubicacion === "") || a.ubicacion.localeCompare(b.ubicacion) || desc(a.codigo).localeCompare(desc(b.codigo)));
   const sinUb = ubic.filter(x => x.cantidad > 0 && !x.ubicacion).length;
@@ -940,7 +940,7 @@ function vUbicaciones() {
     <p class="aviso">Cuadra con el inventario: ${fmtN(totalUb)} unidades en ubicaciones = ${fmtN(totalInv)} en inventario. Lo que salió sin lote se descuenta en el orden de uso de los lotes (CLB primero, luego FIFO).</p>
     <div class="filtros"><input id="f-ub" placeholder="Buscar insumo, lote o ubicación…" value="${esc(filtros.ub || "")}"></div>
     <section class="card">${tabla([{ t: "Ubicación" }, { t: "Insumo" }, { t: "Lote" }, { t: "Cantidad", cl: "num" }, ...(PUEDE.moverUbicacion ? [{ t: "" }] : [])],
-      filas.map(x => `<tr><td>${x.ubicacion ? `<b>${esc(x.ubicacion)}</b>` : `<span class="chip-e e-gris">${SIN_UBIC}</span>`}</td><td class="txt">${esc(insumoTxt(x.codigo))}</td><td>${x.sinLote ? `<span class="chip-e e-gris" title="Stock del inventario que no tiene lote registrado">Sin lote</span>` : esc(x.lote)}</td><td class="num fuerte">${fmtN(x.cantidad)}</td>${PUEDE.moverUbicacion ? `<td>${x.sinLote ? "" : `<button class="btn btn-borde btn-mini" data-mover="${esc(x.codigo + "|" + x.lote + "|" + x.ubicacion)}">⇄ Mover</button>`}</td>` : ""}</tr>`),
+      filas.map(x => `<tr><td class="td-ubic">${x.ubicacion ? `<b>${esc(x.ubicacion)}</b>` : `<span class="chip-e e-gris">${SIN_UBIC}</span>`}</td><td class="txt">${esc(insumoTxt(x.codigo))}</td><td>${x.sinLote ? `<span class="chip-e e-gris" title="Stock del inventario que no tiene lote registrado">Sin lote</span>` : esc(x.lote)}</td><td class="num fuerte">${fmtN(x.cantidad)}</td>${PUEDE.moverUbicacion ? `<td>${x.sinLote ? "" : `<button class="btn btn-borde btn-mini" data-mover="${esc(x.codigo + "|" + x.lote + "|" + x.ubicacion)}">⇄ Mover</button>`}</td>` : ""}</tr>`),
       "No hay insumos con saldo")}</section>`;
 }
 function abrirMover(pre = "") {

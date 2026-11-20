@@ -126,6 +126,8 @@ table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 th { background: var(--th-bg); color: var(--th-ink); text-align: left; padding: 10px 12px; font-weight: 700; white-space: nowrap; position: sticky; top: 0; }
 td { padding: 9px 12px; border-top: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
 td.txt { white-space: normal; min-width: 240px; }
+td.td-ubic { white-space: normal; min-width: 140px; max-width: 280px; overflow-wrap: anywhere; }
+.chip-e.chip-ubic { white-space: normal; overflow-wrap: anywhere; }
 tbody tr:nth-child(even) td { background: var(--surface-2); }
 tbody tr:hover td { background: var(--surface-3); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
